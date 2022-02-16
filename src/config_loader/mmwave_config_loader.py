@@ -1,5 +1,5 @@
 import re
-from typing import Union, Iterable, Sequence
+from typing import Iterable, Sequence
 
 from fancy import config as cfg
 

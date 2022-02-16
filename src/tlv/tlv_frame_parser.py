@@ -16,11 +16,11 @@ class TLVFrameParser:
 
     def parse(self, packet_buffer: WriteableBuffer) -> TLVFrame:
         offset = 0
-        header = FrameHeader.from_buffer(packet_buffer, offset)
+        frame_header = FrameHeader.from_buffer(packet_buffer, offset)
         offset += ctypes.sizeof(FrameHeader)
 
         tlvs = []
-        for i_tlv in range(header.num_tlvs):
+        for i_tlv in range(frame_header.num_tlvs):
             header = TLVHeader.from_buffer(packet_buffer, offset)
             offset += ctypes.sizeof(TLVHeader)
             if header.type not in self.registery:
@@ -34,4 +34,5 @@ class TLVFrameParser:
                 continue
 
             tlvs.append(tlv_type.from_buffer(packet_buffer, offset))
-        return TLVFrame(header, tlvs)
+            offset += header.length
+        return TLVFrame(frame_header, tlvs, packet_buffer)

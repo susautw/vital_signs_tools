@@ -2,13 +2,14 @@ from dataclasses import dataclass
 from typing import Sequence, overload
 
 from tlv import FrameHeader
-from tlv.typing import CData
+from tlv.typing import CData, WriteableBuffer
 
 
 @dataclass
 class TLVFrame(Sequence[CData]):
     frame_header: FrameHeader
     tlvs: Sequence[CData]
+    raw_data: WriteableBuffer
 
     def __len__(self):
         return self.frame_header.num_tlvs

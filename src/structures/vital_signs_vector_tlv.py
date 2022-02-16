@@ -19,3 +19,7 @@ class VitalSignsVectorTLV(ctypes.Structure):
     breathing_waveform: float
     heart_rate: float
     breathing_rate: float
+
+    def __repr__(self):
+        show = {name: getattr(self, name) for name, _ in self._fields_}
+        return f'<{type(self).__name__} {show}>'
