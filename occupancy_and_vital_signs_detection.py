@@ -3,6 +3,7 @@ import ctypes
 import logging
 import sys
 from collections import deque
+from datetime import datetime
 from io import BytesIO
 from pathlib import Path
 from queue import Queue
@@ -20,10 +21,9 @@ import structures
 from config_loader import SequentialLoader, MMWaveConfigLoader
 from sdk_configs import ChannelConfig, FrameConfig, ProfileConfig, ChirpConfig
 from tlv import from_stream, TLVFrameParser, TLVFrame
-from utils import test_time
 
 logger = logging.getLogger("root")
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.WARNING)
 logger.addHandler(logging.StreamHandler(sys.stdout))
 
 args: "ArgConfig"
@@ -67,7 +67,7 @@ def main():
 
     delay = config.frame_cfg.frame_periodicity_in_ms / 1000 if args.mode == "file" else None
     visualizer.start()
-    queue = Queue()
+    queue = Queue(maxsize=args.queue_size)
     read_thread = Thread(target=read_packet_to_queue, args=(data_stream, tlv_frame_parser, delay, queue))
     read_thread.start()
     while read_thread.is_alive():
@@ -76,8 +76,17 @@ def main():
 
 
 def read_packet_to_queue(data_stream, tlv_frame_parser, delay, queue: Queue):
+    skip = 0
     with args.binary_packet_file:
         for frame in from_stream(data_stream, tlv_frame_parser, delay=delay):
+            if skip > 0:
+                skip -= 1
+                continue
+            queue_size_ratio = queue.qsize() / args.queue_size
+            for ratio in args.packet_loss_threshold:
+                if queue_size_ratio > ratio:
+                    skip += args.packet_loss_threshold[ratio]
+                    break
             queue.put(frame)
 
 
@@ -85,21 +94,17 @@ def accept_frame(frame: TLVFrame):
     logger.info(f"get {len(frame)} tlvs from a frame")
     if args.should_store_packets:
         args.binary_packet_file.write(frame.raw_data)
-    decision = [False, False]
     for tlv in frame:
         if isinstance(tlv, heatmap_type):
             logger.debug("updating heatmap")
             visualizer.set_heatmap(tlv)
-
         elif isinstance(tlv, decision_type):
-            decision = list(tlv)
-            logger.debug(f"updating decision {decision}")
+            logger.debug(f"updating decision")
             visualizer.set_decision(tlv)
         elif isinstance(tlv, vital_signs_type):
-            logger.debug(f"updating vital_signs {[v for i, v in enumerate(tlv) if decision[i]]}")
+            logger.debug(f"updating vital_signs")
             visualizer.set_vital_signs(tlv)
-    with test_time("update"):
-        visualizer.update()
+    visualizer.update()
 
 
 class Visualizer:
@@ -161,6 +166,7 @@ class Visualizer:
         motion_notify_event = canvas.callbacks.callbacks["motion_notify_event"]
         if len(motion_notify_event) > 0:
             canvas.mpl_disconnect(list(motion_notify_event.keys())[0])
+
         gs = self.fig_heatmap.add_gridspec(1, 1, left=0, right=0.85)
         ax: plt.PolarAxes = self.fig_heatmap.add_subplot(gs[0], polar=True)
         ax.set_theta_zero_location("N")
@@ -175,7 +181,7 @@ class Visualizer:
         rad_block_size = rad_space[1] - rad_space[0]
 
         zone_rects = []
-
+        ax.grid(False)
         mesh: QuadMesh = ax.pcolormesh(azm, rad, np.zeros((config.num_range_bins, config.num_angle_bins)))
         for zone in config.zone_def.zones:
             rect = Rectangle(
@@ -191,7 +197,7 @@ class Visualizer:
         self.heatmap_updater = HeatmapUpdater(
             mesh,
             zone_rects,
-            self.max_signal_len,
+            4,
             1000
         )
 
@@ -249,11 +255,17 @@ class HeatmapUpdater:
     max_values: deque
     default_vmax: float
 
-    def __init__(self, heatmap_artist: QuadMesh, zone_rects: list[Rectangle], max_signal_len: int, default_vmax: float):
+    def __init__(
+            self,
+            heatmap_artist: QuadMesh,
+            zone_rects: list[Rectangle],
+            rolling_avg_window_size: int,
+            default_vmax: float
+    ):
         self.heatmap_artist = heatmap_artist
         self.zone_rects = zone_rects
         self.axes = heatmap_artist.axes
-        self.max_values = deque([0], maxlen=max_signal_len)
+        self.max_values = deque([0] * rolling_avg_window_size, maxlen=rolling_avg_window_size)
         self.default_vmax = default_vmax
 
     def update(self, context: "Visualizer"):
@@ -377,9 +389,13 @@ class ArgConfig(cfg.BaseConfig):
     cli_port: Optional[str] = cfg.Option(nullable=True, type=str)
     data_port: Optional[str] = cfg.Option(nullable=True, type=str)
     _store_packets: Optional[Path] = cfg.Option(name="store_packets", nullable=True, type=Path)
+    packet_file_path = cfg.PlaceHolder()
 
     should_store_packets: bool = cfg.PlaceHolder()
     binary_packet_file: Optional[IO] = cfg.PlaceHolder()
+
+    queue_size: int = cfg.Lazy(lambda c: 10)
+    packet_loss_threshold: dict[float: int] = {0.8: 1, 0.9: 2, 0.99: 4}
 
     file: Path = cfg.Option(nullable=True, type=Path)
     config: Path = cfg.Option(required=True, type=Path)
@@ -388,9 +404,14 @@ class ArgConfig(cfg.BaseConfig):
         self.should_store_packets = self._store_packets is not None
         if self.should_store_packets:
             self._store_packets.parent.mkdir(parents=True, exist_ok=True)
-            self.binary_packet_file = self._store_packets.open("wb")
+            self.packet_file_path = self._store_packets.with_suffix(
+                f'.{datetime.now().strftime("%Y%m%dT%H%M%S")}{self._store_packets.suffix}'
+            )
+            self.binary_packet_file = self.packet_file_path.open("wb")
         else:
             self.binary_packet_file = BytesIO()  # dummy
+        # noinspection PyTypeChecker
+        self.packet_loss_threshold = dict(sorted(self.packet_loss_threshold.items(), reverse=True))
 
 
 def get_arg_parser() -> argparse.ArgumentParser:
