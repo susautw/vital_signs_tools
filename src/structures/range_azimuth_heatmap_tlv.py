@@ -7,6 +7,6 @@ def range_azimuth_heatmap_tlv(n_range_bins: int = 64, n_azimuth_bins: int = 48, 
     if n_range_bins <= 0 or n_azimuth_bins < 0 or dtype not in SUPPORTED_DTYPES:
         raise ValueError(f"invalid arguments {n_range_bins=}, {n_azimuth_bins=}, {dtype=}")
 
-    map_type = dtype * n_range_bins * n_azimuth_bins
+    map_type = dtype * n_azimuth_bins * n_range_bins
 
     return map_type
