@@ -2,8 +2,8 @@ import argparse
 import ctypes
 import logging
 import sys
-from collections import deque
 from datetime import datetime
+from functools import cache, cached_property
 from io import BytesIO
 from pathlib import Path
 from queue import Queue
@@ -21,6 +21,7 @@ import structures
 from config_loader import SequentialLoader, MMWaveConfigLoader
 from sdk_configs import ChannelConfig, FrameConfig, ProfileConfig, ChirpConfig
 from tlv import from_stream, TLVFrameParser, TLVFrame
+from utils import RollingAverage
 
 logger = logging.getLogger("root")
 logger.setLevel(logging.WARNING)
@@ -147,7 +148,7 @@ class Visualizer:
             text_ax: plt.Axes = self.fig_info.add_subplot(gs[0, i])
             text_ax.set_axis_off()
             text_ax.text(
-                .5, .5, f"Zone {i}",
+                .5, .5, f"Zone {config.zone_def.geo_sorted_ids[i]}",
                 verticalalignment="center",
                 horizontalalignment="center",
                 fontsize="x-large"
@@ -167,23 +168,24 @@ class Visualizer:
         if len(motion_notify_event) > 0:
             canvas.mpl_disconnect(list(motion_notify_event.keys())[0])
 
-        gs = self.fig_heatmap.add_gridspec(1, 1, left=0, right=0.85)
-        ax: plt.PolarAxes = self.fig_heatmap.add_subplot(gs[0], polar=True)
+        gs = self.fig_heatmap.add_gridspec(2, self.num_zones, left=0, right=0.85, height_ratios=[5, 2], wspace=0.3)
+        ax: plt.PolarAxes = self.fig_heatmap.add_subplot(gs[0, :], polar=True)
         ax.set_theta_zero_location("N")
         ax.set_thetalim(*np.deg2rad([-60, 60]))
         ax.set_xlabel("Azimuth")
         ax.yaxis.set_label_text("Range", y=0.4, verticalalignment="center")
-        azm, rad = np.meshgrid(
-            azm_space := np.linspace(np.deg2rad(-60), np.deg2rad(60), config.num_angle_bins),
-            rad_space := np.linspace(0, 3, config.num_range_bins)
-        )
+        azm_space_deg = np.linspace(-60, 60, config.num_angle_bins)
+        rad_space = np.linspace(0, 3, config.num_range_bins)
+        azm, rad = np.meshgrid(azm_space := np.deg2rad(azm_space_deg), rad_space)
+        azm_deg, rad_deg = np.meshgrid(azm_space_deg, rad_space)
         azm_block_size = azm_space[1] - azm_space[0]
         rad_block_size = rad_space[1] - rad_space[0]
 
         zone_rects = []
+        zone_meshes = []
         ax.grid(False)
         mesh: QuadMesh = ax.pcolormesh(azm, rad, np.zeros((config.num_range_bins, config.num_angle_bins)))
-        for zone in config.zone_def.zones:
+        for zone_idx, zone in enumerate(config.zone_def.zones):
             rect = Rectangle(
                 (mesh.convert_xunits(azm_space[zone.azimuth_start]), mesh.convert_yunits(rad_space[zone.range_start])),
                 zone.azimuth_length * azm_block_size,
@@ -193,9 +195,16 @@ class Visualizer:
             )
             ax.add_patch(rect)
             zone_rects.append(rect)
+            rect_ax: plt.Axes = self.fig_heatmap.add_subplot(gs[1, config.zone_def.geo_sorted_ids[zone_idx]])
+
+            rect_mesh = rect_ax.pcolormesh(
+                azm_deg[zone.idx_slice], rad_deg[zone.idx_slice], np.zeros((zone.range_length, zone.azimuth_length))
+            )
+            zone_meshes.append(rect_mesh)
 
         self.heatmap_updater = HeatmapUpdater(
             mesh,
+            zone_meshes,
             zone_rects,
             4,
             1000
@@ -216,7 +225,7 @@ class Visualizer:
     def update(self):
         for zone, (zone_decision, zone_vital_signs) in enumerate(zip(self.decision, self.vital_signs)):
             for plot_name in self.plot_names:
-                self.fig_info_plots[plot_name][zone].update(
+                self.fig_info_plots[plot_name][config.zone_def.geo_sorted_ids[zone]].update(
                     getattr(zone_vital_signs, plot_name) if zone_decision else 0,
                     bool(zone_decision)
                 )
@@ -250,31 +259,43 @@ class PlotUpdater:
 
 class HeatmapUpdater:
     heatmap_artist: QuadMesh
+    zone_heatmap_artists: list[QuadMesh]
+    zone_heatmaps_vmax: list[RollingAverage]
     zone_rects: list[Rectangle]
     axes: plt.Axes
-    max_values: deque
-    default_vmax: float
+    heatmap_vmax: RollingAverage
 
     def __init__(
             self,
             heatmap_artist: QuadMesh,
+            zone_heatmap_artists: list[QuadMesh],
             zone_rects: list[Rectangle],
             rolling_avg_window_size: int,
             default_vmax: float
     ):
         self.heatmap_artist = heatmap_artist
+        self.zone_heatmap_artists = zone_heatmap_artists
         self.zone_rects = zone_rects
         self.axes = heatmap_artist.axes
-        self.max_values = deque([0] * rolling_avg_window_size, maxlen=rolling_avg_window_size)
-        self.default_vmax = default_vmax
+        self.heatmap_vmax = RollingAverage(rolling_avg_window_size, low=default_vmax, init=0)
+        self.zone_heatmaps_vmax = [
+            RollingAverage(rolling_avg_window_size, low=default_vmax, init=0)
+            for _ in range(config.zone_def.number_of_zones)
+        ]
 
     def update(self, context: "Visualizer"):
-        self.max_values.popleft()
-        self.max_values.append(np.max(context.heatmap))
-        rolling_avg = sum(self.max_values) / self.max_values.maxlen
         self.heatmap_artist.set_array(context.heatmap)
-        self.heatmap_artist.set_clim(0, rolling_avg if rolling_avg > self.default_vmax else self.default_vmax)
-        for decision, zone_rect in zip(context.decision, self.zone_rects):
+        self.heatmap_artist.set_clim(0, self.heatmap_vmax.next(np.max(context.heatmap)))
+        for zone, decision, zone_rect, zone_mesh, zone_vmax in zip(
+                config.zone_def.zones,
+                context.decision,
+                self.zone_rects,
+                self.zone_heatmap_artists,
+                self.zone_heatmaps_vmax
+        ):
+            zone_heatmap = context.heatmap[zone.idx_slice]
+            zone_mesh.set_array(zone_heatmap)
+            zone_mesh.set_clim(0, zone_vmax.next(np.max(zone_heatmap)))
             zone_rect.set_edgecolor("g" if decision else "r")
 
 
@@ -329,18 +350,34 @@ class Zone(cfg.BaseConfig):
     azimuth_start: int = cfg.Option(type=int)
     azimuth_length: int = cfg.Option(type=int)
 
+    @cache
+    def order(self) -> tuple[float, float]:
+        return self.azimuth_start + self.azimuth_length // 2, self.range_start + self.range_length // 2
+
+    @cached_property
+    def idx_slice(self) -> tuple[slice, slice]:
+        return (
+            slice(self.range_start, self.range_start + self.range_length),
+            slice(self.azimuth_start, self.azimuth_start + self.azimuth_length)
+        )
+
 
 class ZoneDef(cfg.BaseConfig):
     number_of_zones: int = cfg.Option(type=int)
     _zone_defs: list[int] = cfg.Option(name="zone_defs", type=[int])
 
     zones: list[Zone] = cfg.PlaceHolder()
+    geo_sorted_ids: list[int] = cfg.PlaceHolder()
 
     def post_load(self):
         self.zones = []
         for i in range(self.number_of_zones):
             loader = SequentialLoader(self._zone_defs[i * 4: i * 4 + 4])
             self.zones.append(Zone(loader))
+        geo_sorted_pair = sorted(enumerate(self.zones), key=lambda x: x[1].order(), reverse=True)
+        self.geo_sorted_ids = [0] * len(geo_sorted_pair)
+        for geo_sorted_idx, (idx, zone) in enumerate(geo_sorted_pair):
+            self.geo_sorted_ids[idx] = geo_sorted_idx
 
 
 class Config(cfg.BaseConfig):
