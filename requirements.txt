@@ -1,0 +1,5 @@
+numpy~=1.22.1
+matplotlib~=3.5.1
+pyserial~=3.5
+h5py~=3.6.0
+fancy-config~=0.10.0

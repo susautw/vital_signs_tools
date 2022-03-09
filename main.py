@@ -2,7 +2,7 @@ import pprint
 from pathlib import Path
 
 from config_loader import MMWaveConfigLoader
-from occupancy_and_vital_signs_detection import Config
+from occupancy_and_vital_signs_detection.main import Config
 
 
 def main():
