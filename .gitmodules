@@ -1,0 +1,3 @@
+[submodule "Efficient-3DCNNs"]
+	path = Efficient-3DCNNs
+	url = https://github.com/susautw/Efficient-3DCNNs

@@ -21,7 +21,7 @@ import structures
 from config_loader import SequentialLoader, MMWaveConfigLoader
 from sdk_configs import ChannelConfig, FrameConfig, ProfileConfig, ChirpConfig
 from tlv import from_stream, TLVFrameParser, TLVFrame
-from utils import RollingAverage
+from utility import RollingAverage
 
 logger = logging.getLogger("root")
 logger.setLevel(logging.WARNING)
@@ -50,30 +50,38 @@ def main():
     else:
         logger.error(f"Unknown mode {args.mode}")
         return 1
-
     load_and_send_config(args.config, cli_port)
+    logger.info(f"config has loaded.")
 
     visualizer = Visualizer(
         100, config.zone_def.number_of_zones
     )
 
-    tlv_frame_parser = TLVFrameParser()
-    tlv_frame_parser.register_type(8, heatmap_type := structures.range_azimuth_heatmap_tlv(
-        config.num_range_bins, config.num_angle_bins, config.gui_monitor.heatmap_dtype
-    ))
-    tlv_frame_parser.register_type(9, decision_type := structures.decision_vector_tlv(config.zone_def.number_of_zones))
-    tlv_frame_parser.register_type(
-        10, vital_signs_type := structures.vital_signs_vector_tlv(config.zone_def.number_of_zones)
-    )
+    tlv_frame_parser = get_parser(config)
 
     delay = config.frame_cfg.frame_periodicity_in_ms / 1000 if args.mode == "file" else None
     visualizer.start()
+    logger.info("visualizer has start")
     queue = Queue(maxsize=args.queue_size)
     read_thread = Thread(target=read_packet_to_queue, args=(data_stream, tlv_frame_parser, delay, queue))
     read_thread.start()
+    logger.info("read_thread has start")
     while read_thread.is_alive():
         frame = queue.get()
         accept_frame(frame)
+
+
+def get_parser(config_: "Config"):
+    global heatmap_type, decision_type, vital_signs_type
+    tlv_frame_parser = TLVFrameParser()
+    tlv_frame_parser.register_type(8, heatmap_type := structures.range_azimuth_heatmap_tlv(
+        config_.num_range_bins, config_.num_angle_bins, config_.gui_monitor.heatmap_dtype
+    ))
+    tlv_frame_parser.register_type(9, decision_type := structures.decision_vector_tlv(config_.zone_def.number_of_zones))
+    tlv_frame_parser.register_type(
+        10, vital_signs_type := structures.vital_signs_vector_tlv(config_.zone_def.number_of_zones)
+    )
+    return tlv_frame_parser
 
 
 def read_packet_to_queue(data_stream, tlv_frame_parser, delay, queue: Queue):

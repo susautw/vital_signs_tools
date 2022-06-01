@@ -2,7 +2,7 @@ import ctypes
 import logging
 import time
 from io import RawIOBase
-from typing import Iterator
+from typing import Iterator, BinaryIO, Union
 
 from tlv import TLVFrameParser, FrameHeader, TLVFrame
 
@@ -12,7 +12,7 @@ FRAME_SIZE = ctypes.sizeof(FrameHeader)
 
 
 def from_stream(
-        stream: RawIOBase,
+        stream: Union[RawIOBase, BinaryIO],
         parser: TLVFrameParser,
         delay: float = None,
         max_buffer=2 ** 16,

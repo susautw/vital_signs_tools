@@ -1,0 +1,52 @@
+profile_name:
+  exp_init
+
+model:
+  import_statement: from models.resnet import resnet18
+  param:
+    num_classes: 3
+    sample_size: 7
+    sample_duration: 7
+
+
+optimizer:
+  import_statement: from torch.optim import Adam
+  param:
+    lr: 0.0001
+
+trainer:
+  out: ./outs/exp_init
+  max_epochs: 200
+  ddp: no
+  half: no
+
+loss_func:
+  import_statement: from torch.nn import CrossEntropyLoss
+
+dataset:
+  transform:
+    import_statement: from fancy.trainer.transform_factories import TransformsFactory
+
+  train:
+    import_statement: from datasets import SlidingWindowDataset
+    param:
+      data_h5_path: dataset_out/train.h5
+    batch_size: 16
+    shuffle: yes
+    pin_memory: yes
+    num_workers: 2
+
+  test:
+    import_statement: from datasets import SlidingWindowDataset
+    param:
+      data_h5_path: dataset_out/test.h5
+    batch_size: 16
+    shuffle: no
+    pin_memory: yes
+    num_workers: 2
+
+metrics:
+  train:
+    - Accuracy
+  test:
+    - Accuracy

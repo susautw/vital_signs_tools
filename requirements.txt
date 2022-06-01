@@ -3,3 +3,4 @@ matplotlib~=3.5.1
 pyserial~=3.5
 h5py~=3.6.0
 fancy-config~=0.10.0
+torch~=1.8.2
