@@ -16,9 +16,11 @@ import numpy as np
 from matplotlib import pyplot as plt
 from matplotlib.collections import QuadMesh
 from matplotlib.patches import Rectangle
+import matplotlib as mpl
 
 import structures
 from config_loader import SequentialLoader, MMWaveConfigLoader
+from occupancy_and_vital_signs_detection.plots import HeatmapPlotter
 from sdk_configs import ChannelConfig, FrameConfig, ProfileConfig, ChirpConfig
 from tlv import from_stream, TLVFrameParser, TLVFrame
 from utility import RollingAverage
@@ -34,6 +36,10 @@ visualizer: "Visualizer"
 heatmap_type: Type[ctypes.Array[ctypes.Array[Union[ctypes.c_uint8, ctypes.c_uint16, ctypes.c_float]]]]
 decision_type: Type[ctypes.Array[ctypes.c_bool]]
 vital_signs_type: Type[ctypes.Array[structures.VitalSignsVectorTLV]]
+
+mpl.rcParams['font.family'] = ['Microsoft YaHei', 'sans-serif']
+QUEUE_WARNING_RATIO = 0.8
+finalized = False
 
 
 def main():
@@ -60,15 +66,26 @@ def main():
     tlv_frame_parser = get_parser(config)
 
     delay = config.frame_cfg.frame_periodicity_in_ms / 1000 if args.mode == "file" else None
+    finalizer = get_finalizer(data_stream, cli_port, visualizer.fig.canvas)
+
     visualizer.start()
     logger.info("visualizer has start")
     queue = Queue(maxsize=args.queue_size)
     read_thread = Thread(target=read_packet_to_queue, args=(data_stream, tlv_frame_parser, delay, queue))
     read_thread.start()
     logger.info("read_thread has start")
-    while read_thread.is_alive():
-        frame = queue.get()
-        accept_frame(frame)
+
+    try:
+        while read_thread.is_alive() and not finalized:
+            frame, skip = queue.get()
+            accept_frame(frame, skip)
+            if (ratio := queue.qsize() / queue.maxsize) > QUEUE_WARNING_RATIO:
+                logger.warning(f'frame {frame.frame_header.frame_number} / high queue_size_ratio: {ratio:.2%}')
+    except KeyboardInterrupt:
+        print("Interrupted!")
+    finally:
+        finalizer(None)
+    print("Done.")
 
 
 def get_parser(config_: "Config"):
@@ -90,19 +107,22 @@ def read_packet_to_queue(data_stream, tlv_frame_parser, delay, queue: Queue):
         for frame in from_stream(data_stream, tlv_frame_parser, delay=delay):
             if skip > 0:
                 skip -= 1
+                queue.put((frame, True))
                 continue
             queue_size_ratio = queue.qsize() / args.queue_size
             for ratio in args.packet_loss_threshold:
                 if queue_size_ratio > ratio:
                     skip += args.packet_loss_threshold[ratio]
                     break
-            queue.put(frame)
+            queue.put((frame, False))
 
 
-def accept_frame(frame: TLVFrame):
+def accept_frame(frame: TLVFrame, skip: bool):
     logger.info(f"get {len(frame)} tlvs from a frame")
     if args.should_store_packets:
         args.binary_packet_file.write(frame.raw_data)
+    if skip:
+        return
     for tlv in frame:
         if isinstance(tlv, heatmap_type):
             logger.debug("updating heatmap")
@@ -114,6 +134,22 @@ def accept_frame(frame: TLVFrame):
             logger.debug(f"updating vital_signs")
             visualizer.set_vital_signs(tlv)
     visualizer.update()
+
+
+def get_finalizer(data_stream: IO, cli_port, canvas: plt.FigureCanvasBase):
+    def finalize(_event):
+        global finalized
+        if finalized:
+            return
+        finalized = True
+        canvas.close_event()
+        if cli_port is not None:
+            cli_port.write(b"sensorStop\n")
+            cli_port.close()
+        data_stream.close()
+
+    canvas.mpl_connect("close_event", finalize)
+    return finalize
 
 
 class Visualizer:
@@ -138,10 +174,15 @@ class Visualizer:
     def __init__(self, max_signal_len: int, num_zones: int):
         self.max_signal_len = max_signal_len
         self.num_zones = num_zones
-        self.fig = plt.figure(figsize=(13, 8))
-        gs = self.fig.add_gridspec(1, 2, width_ratios=[3, 2])
-        self.fig_info = self.fig.add_subfigure(gs[0])
-        self.fig_heatmap = self.fig.add_subfigure(gs[1])
+        self.fig = plt.figure(figsize=(14, 8))
+        gs = self.fig.add_gridspec(2, 2, width_ratios=[3, 2], height_ratios=[0.05, 1])
+
+        title_ax = self.fig.add_subfigure(gs[0, :]).add_subplot(111)
+        title_ax.set_axis_off()
+        title_ax.text(0.5, 0, "靜宜大學人工智慧實驗室", fontsize=22, horizontalalignment="center")
+
+        self.fig_info = self.fig.add_subfigure(gs[1, 0])
+        self.fig_heatmap = self.fig.add_subfigure(gs[1, 1])
         self._init_info_plots()
         self._init_heatmap()
 
@@ -177,45 +218,29 @@ class Visualizer:
             canvas.mpl_disconnect(list(motion_notify_event.keys())[0])
 
         gs = self.fig_heatmap.add_gridspec(2, self.num_zones, left=0, right=0.85, height_ratios=[5, 2], wspace=0.3)
-        ax: plt.PolarAxes = self.fig_heatmap.add_subplot(gs[0, :], polar=True)
-        ax.set_theta_zero_location("N")
-        ax.set_thetalim(*np.deg2rad([-60, 60]))
-        ax.set_xlabel("Azimuth")
-        ax.yaxis.set_label_text("Range", y=0.4, verticalalignment="center")
-        azm_space_deg = np.linspace(-60, 60, config.num_angle_bins)
-        rad_space = np.linspace(0, 3, config.num_range_bins)
-        azm, rad = np.meshgrid(azm_space := np.deg2rad(azm_space_deg), rad_space)
-        azm_deg, rad_deg = np.meshgrid(azm_space_deg, rad_space)
-        azm_block_size = azm_space[1] - azm_space[0]
-        rad_block_size = rad_space[1] - rad_space[0]
+        polar_ax: plt.PolarAxes = self.fig_heatmap.add_subplot(gs[0, :], polar=True)
+
+        zone_axs = {
+            zone_idx: self.fig_heatmap.add_subplot(gs[1, config.zone_def.geo_sorted_ids[zone_idx]])
+            for zone_idx, zone in enumerate(config.zone_def.zones)
+        }
+
+        plotter = HeatmapPlotter(config, polar_full=polar_ax, zones=zone_axs)
+        plotter.initialize()
 
         zone_rects = []
         zone_meshes = []
-        ax.grid(False)
-        mesh: QuadMesh = ax.pcolormesh(azm, rad, np.zeros((config.num_range_bins, config.num_angle_bins)))
-        for zone_idx, zone in enumerate(config.zone_def.zones):
-            rect = Rectangle(
-                (mesh.convert_xunits(azm_space[zone.azimuth_start]), mesh.convert_yunits(rad_space[zone.range_start])),
-                zone.azimuth_length * azm_block_size,
-                zone.range_length * rad_block_size,
-                fill=False,
-                linewidth=1
-            )
-            ax.add_patch(rect)
-            zone_rects.append(rect)
-            rect_ax: plt.Axes = self.fig_heatmap.add_subplot(gs[1, config.zone_def.geo_sorted_ids[zone_idx]])
 
-            rect_mesh = rect_ax.pcolormesh(
-                azm_deg[zone.idx_slice], rad_deg[zone.idx_slice], np.zeros((zone.range_length, zone.azimuth_length))
-            )
-            zone_meshes.append(rect_mesh)
+        for zone_plot in plotter.zone_plots.values():
+            zone_rects.append(zone_plot.rect)
+            zone_meshes.append(zone_plot.mesh)
 
         self.heatmap_updater = HeatmapUpdater(
-            mesh,
+            plotter.polar_full_mesh,
             zone_meshes,
             zone_rects,
-            4,
-            1000
+            rolling_avg_window_size=4,
+            default_vmax=1000
         )
 
     def start(self) -> None:
@@ -440,7 +465,7 @@ class ArgConfig(cfg.BaseConfig):
     binary_packet_file: Optional[IO] = cfg.PlaceHolder()
 
     queue_size: int = cfg.Lazy(lambda c: 10)
-    packet_loss_threshold: dict[float: int] = {0.8: 1, 0.9: 2, 0.99: 4}
+    packet_loss_threshold: dict[float: int] = {0.5: 1, 0.7: 2, 0.9: 4}
 
     file: Path = cfg.Option(nullable=True, type=Path)
     config: Path = cfg.Option(required=True, type=Path)

@@ -1,8 +1,10 @@
 import contextlib
+import ctypes
 import inspect
 import time
 from collections import deque
 from math import inf
+from typing import Any
 
 
 @contextlib.contextmanager
@@ -67,3 +69,11 @@ class RollingAverage:
         self.window_size = new_window_size
 
         self._rolling_avg = sum(self.values) / self.window_size
+
+
+def structure_to_dict(struct: ctypes.Structure) -> dict[str, Any]:
+    result = {}
+    # noinspection PyProtectedMember
+    for field_name, field_typ in struct._fields_:
+        result[field_name] = getattr(struct, field_name)
+    return result
