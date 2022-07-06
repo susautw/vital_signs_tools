@@ -14,12 +14,13 @@ EXP_DIR = BASE_DIR.parent
 def main():
     fft_size = 64
     source_root = EXP_DIR / Path("exp2/outs")
-    output_base = BASE_DIR / "stft_out"
+    output_base = BASE_DIR / "stft_out_64"
     fs = 1 / 0.107
     frame_to_peek = int(np.ceil((5 / 0.107) / fft_size))
 
     window_params: list[Union[tuple, str]] = [
         "unwindowed",
+        "hann",
         "hamming",
         "blackman",
         "cosine"
@@ -55,27 +56,24 @@ def plot_stft(
         output: Path
 ):
     fig: plt.Figure = plt.figure(figsize=(15, 15))
-    gs = fig.add_gridspec(len(windows), 4, hspace=0.5, wspace=0.5)
+    gs = fig.add_gridspec(len(windows), 3, hspace=0.5, wspace=0.5)
+    signal = signal - signal.mean()  # remove DC component
 
     for i, (name, window) in enumerate(windows.items()):
-        f, t, z = stft(signal, fs, window, nperseg=fft_size)
+        f, t, z = stft(signal, fs, window, nperseg=fft_size, detrend=lambda x: x-x.mean())
         window_ax: plt.Axes = fig.add_subplot(gs[i, 0])
         ax: plt.Axes = fig.add_subplot(gs[i, 1])
         peek_ax: plt.Axes = fig.add_subplot(gs[i, 2])
-        peek_nodc_ax: plt.Axes = fig.add_subplot(gs[i, 3])
 
         window_ax.set_title(f"{name}")
-        ax.set_title(f'STFT ({name}, without DC)')
+        ax.set_title(f'STFT ({name})')
         peek_ax.set_title(f'fft at frame:{frame_to_peek}')
-        peek_nodc_ax.set_title(f"fft at frame (without DC): {frame_to_peek}")
 
         f *= 60  # sec to min
 
         magnitude = np.abs(z)
-        magnitude_without_dc = magnitude.copy()
-        magnitude_without_dc[0, :] = 0
 
-        mesh = ax.pcolormesh(t, f, magnitude_without_dc, vmin=0, vmax=np.max(magnitude_without_dc))
+        mesh = ax.pcolormesh(t, f, magnitude, vmin=0, vmax=np.max(magnitude))
 
         window_ax.plot(window)
 
@@ -83,7 +81,6 @@ def plot_stft(
         ax.set_yticks([0, 60, 80, 120, 200])
         ax.set_xlabel('Time [sec]')
 
-        peek_nodc_ax.plot(f, magnitude_without_dc[:, frame_to_peek])
         peek_ax.plot(f, magnitude[:, frame_to_peek])
         fig.colorbar(mesh, ax=ax)
     output.parent.mkdir(parents=True, exist_ok=True)
