@@ -1,3 +1,6 @@
 [submodule "Efficient-3DCNNs"]
 	path = Efficient-3DCNNs
 	url = https://github.com/susautw/Efficient-3DCNNs
+[submodule "yolov5"]
+	path = yolov5
+	url = https://github.com/ultralytics/yolov5
