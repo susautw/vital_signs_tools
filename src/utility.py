@@ -6,6 +6,10 @@ from collections import deque
 from math import inf
 from typing import Any
 
+import cv2
+import numpy as np
+from matplotlib import pyplot as plt
+
 
 @contextlib.contextmanager
 def test_time(name: str = "", line=None):
@@ -77,3 +81,13 @@ def structure_to_dict(struct: ctypes.Structure) -> dict[str, Any]:
     for field_name, field_typ in struct._fields_:
         result[field_name] = getattr(struct, field_name)
     return result
+
+
+def convert_fig_to_image(fig: plt.Figure, draw=False) -> np.ndarray:
+    if draw:
+        fig.canvas.draw()
+    img = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
+    w, h = fig.canvas.get_width_height()
+    img = img.reshape((h, w, 3))
+
+    return cv2.cvtColor(img, cv2.COLOR_RGB2BGR)

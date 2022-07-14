@@ -8,7 +8,7 @@ from matplotlib import pyplot as plt
 from config_loader import MMWaveConfigLoader
 from occupancy_and_vital_signs_detection.main import Config
 from occupancy_and_vital_signs_detection.plots import HeatmapPlotter
-from utility import RollingAverage
+from utility import RollingAverage, convert_fig_to_image
 
 BASE_DIR = Path(__file__).parent
 
@@ -116,14 +116,6 @@ def find_frequency_via_fft(heatmaps: np.ndarray, start: int, size: int, output: 
     fig.savefig(output)
     fig.clf()
     plt.close(fig)
-
-
-def convert_fig_to_image(fig: plt.Figure):
-    img = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
-    w, h = fig.canvas.get_width_height()
-    img = img.reshape((h, w, 3))
-
-    return cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
 
 
 if __name__ == '__main__':
