@@ -24,13 +24,13 @@ TYPE_FIG_SIZE_MAP = {
 }
 
 TYPE_FIG_CONTENT_RANGE_MAP = {  # (W_start, W_end, H_start, H_end)
-    MapType.Full: (0, 1, 0, 1),
-    MapType.PolarFull: (0, 1, 0.25, 0.75)
+    MapType.Full: np.array([0, 1, 0, 1]),
+    MapType.PolarFull: np.array([0, 1, 0.21, 0.79])
 }
 
 H: dict[MapType, int] = {}
 W: dict[MapType, int] = {}
-idx_slice: dict[MapType, tuple[slice]] = {}
+idx_slice: dict[MapType, tuple[slice, ...]] = {}
 
 
 def main():
@@ -58,12 +58,11 @@ def process_one(path: Path, config: Config) -> None:
                 break
             for typ, image in images.items():
                 if typ not in combined_images:
-                    w_start = w_end = h_start = h_end = 0  # TODO limit every fig's w and h
                     combined_images[typ] = np.zeros((H[typ] * SHAPE[0], W[typ] * SHAPE[1], 3), dtype=np.uint8)
                 y, x = np.unravel_index(i, SHAPE)
                 x *= W[typ]
                 y *= H[typ]
-                combined_images[typ][y: y + H[typ], x: x + W[typ]] = image
+                combined_images[typ][y: y + H[typ], x: x + W[typ]] = image[idx_slice[typ]]
         out_path = (OUT_BASE_DIR / path.relative_to(SOURCE_BASE_DIR)).with_suffix(".png")
         out_path.parent.mkdir(parents=True, exist_ok=True)
         for typ, combined_image in combined_images.items():
@@ -79,9 +78,11 @@ def fig_init_hook(figs: dict[MapType, plt.Figure], axs: dict[MapType, plt.Axes])
         ax.set_axis_off()
     for typ, fig in figs.items():
         fig.set_size_inches(*TYPE_FIG_SIZE_MAP[typ])
-        w, h = fig.canvas.get_width_height()
-        w_s, w_e, h_s, w_e = TYPE_FIG_CONTENT_RANGE_MAP[typ]
-        # TODO init idx_slice here
+        size = np.asarray(fig.canvas.get_width_height())
+        w_s, w_e, h_s, h_e = np.int32(TYPE_FIG_CONTENT_RANGE_MAP[typ] * size[[0, 0, 1, 1]])
+        idx_slice[typ] = slice(h_s, h_e), slice(w_s, w_e)
+        W[typ] = w_e - w_s
+        H[typ] = h_e - h_s
         fig.tight_layout(pad=0)
 
 
