@@ -6,7 +6,7 @@ import numpy as np
 from matplotlib import pyplot as plt
 
 from config_loader import MMWaveConfigLoader
-from occupancy_and_vital_signs_detection.h5_to_image import MapType, h5_to_images, TYPE_NAME_SUFFIX_MAP
+from occupancy_and_vital_signs_detection.h5_to_image import MapType, h5_to_images, TYPE_NAME_SUFFIX_MAP, MapSourceType
 from occupancy_and_vital_signs_detection.main import Config
 
 BASE_DIR = Path(__file__).parent
@@ -48,10 +48,13 @@ def main():
 def process_one(path: Path, config: Config) -> None:
     combined_images = {}
     with h5py.File(path) as fp:
+        full_heatmaps = np.asarray(fp[MapSourceType.Full.value][SKIP: SKIP + LENGTH])
+        skip = SKIP + full_heatmaps.sum(axis=(1, 2)).argmax()
+        print(f"{skip=}")
         for i, images in enumerate(h5_to_images(
                 fp, config, MAP_TYP, False, False,
                 initialize_hook=fig_init_hook,
-                skip=SKIP
+                skip=skip
 
         )):
             if i >= LENGTH:
