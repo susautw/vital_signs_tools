@@ -3,10 +3,10 @@ from pathlib import Path
 import cv2
 import h5py
 import numpy as np
-from matplotlib import pyplot as plt
 
 from config_loader import MMWaveConfigLoader
-from occupancy_and_vital_signs_detection.h5_to_image import MapType, h5_to_images, TYPE_NAME_SUFFIX_MAP, MapSourceType
+from occupancy_and_vital_signs_detection.h5_to_image import MapType, h5_to_images, TYPE_NAME_SUFFIX_MAP, \
+    MapSourceType, HeatmapFigureIterator
 from occupancy_and_vital_signs_detection.main import Config
 
 BASE_DIR = Path(__file__).parent
@@ -75,11 +75,12 @@ def process_one(path: Path, config: Config) -> None:
             )
 
 
-def fig_init_hook(figs: dict[MapType, plt.Figure], axs: dict[MapType, plt.Axes]) -> None:
+def fig_init_hook(hf_iter: HeatmapFigureIterator) -> None:
     global W, H
-    for ax in axs.values():
-        ax.set_axis_off()
-    for typ, fig in figs.items():
+
+    for typ, figure_collection in hf_iter.figure_collections.items():
+        figure_collection.ax.set_axis_off()
+        fig = figure_collection.figure
         fig.set_size_inches(*TYPE_FIG_SIZE_MAP[typ])
         size = np.asarray(fig.canvas.get_width_height())
         w_s, w_e, h_s, h_e = np.int32(TYPE_FIG_CONTENT_RANGE_MAP[typ] * size[[0, 0, 1, 1]])

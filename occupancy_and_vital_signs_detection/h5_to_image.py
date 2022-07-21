@@ -1,7 +1,9 @@
 import argparse
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from enum import IntEnum, Enum
 from pathlib import Path
-from typing import Union, Iterator, Callable
+from typing import Union, Iterator, Callable, Optional
 
 import cv2
 import h5py
@@ -98,7 +100,8 @@ def main(args_=None):
     print("Done!")
 
 
-InitializeHook = Callable[[dict[MapType, plt.Figure], dict[MapType, plt.Axes]], None]
+InitializeHook = Callable[["HeatmapFigureIterator"], None]
+HeatmapSourcesIterator = Iterator[dict[MapSourceType, np.ndarray]]
 
 
 def h5_to_images(
@@ -111,75 +114,230 @@ def h5_to_images(
         initialize_hook: InitializeHook = None,
         skip: int = 0
 ) -> Iterator[dict[MapType, np.ndarray]]:
-    figs: dict[MapType, plt.Figure] = {}
-    axs: dict[MapType, plt.Axes] = {}
-    meshes: dict[MapType, QuadMesh] = {}
-    used_map_types: set = set()
+    configurator = MeshUpdater()
 
-    try:
-        for typ in ALL_MAP_TYPES:
-            if map_typ & typ:
-                figs[typ] = plt.figure()
-                axs[typ] = figs[typ].add_subplot(111, polar=typ is MapType.PolarFull)
-                used_map_types.add(typ)
+    if sep_averager:
+        configurator = SeparatingAveragingLimitUpdater(configurator, _rolling_average_factory)
+    else:
+        configurator = AveragingLimitUpdater(configurator, _rolling_average_factory)
 
-        if initialize_hook is not None:
-            initialize_hook(figs, axs)
+    with HeatmapFigureIterator(
+        map_typ,
+        configurator,
+        config=config,
+        show_rect=show_rect,
+        h5_heatmaps=fp,
+        skip=skip
+    ) as heatmap_fig_iter:
 
+        initialize_hook(heatmap_fig_iter)
+
+        for fig_collections in heatmap_fig_iter:
+            yield {
+                typ: convert_fig_to_image(fig_collection.figure, draw=True)
+                for typ, fig_collection in fig_collections.items()
+            }
+
+
+def _rolling_average_factory():
+    return RollingAverage(window_size=4, low=1000, init=0)
+
+
+@dataclass
+class FigureCollection:
+    figure: plt.Figure
+    ax: plt.Axes
+    mesh: QuadMesh = None
+
+
+class HeatmapFigureIterator(Iterator[dict[MapType, FigureCollection]]):
+    _inner_iterator: Iterator[dict[MapType, FigureCollection]] = None
+
+    configurator: "HeatmapConfiguratorBase"
+    figure_collections: dict[MapType, FigureCollection]
+    config: Optional[Config]
+    show_rect: bool
+
+    skip: int
+    h5_heatmaps: h5py.File
+    sources_iter: HeatmapSourcesIterator
+
+    used_map_types: set[MapType]
+    used_map_source_types: set[MapSourceType]
+
+    def __init__(
+            self,
+            map_typ: int,
+            configurator: "HeatmapConfiguratorBase", *,
+            figure_collections: dict[MapType, FigureCollection] = None,
+            config: Config = None,
+            show_rect: bool = False,
+            h5_heatmaps: h5py.File = None,
+            skip: int = 0,
+            sources_iter: HeatmapSourcesIterator = None,
+    ):
+        self.used_map_types = {typ for typ in ALL_MAP_TYPES if map_typ & typ}
+        self.used_map_source_types = {TYPE_SOURCE_MAP[typ] for typ in self.used_map_types}
+        self.used_map_source_types.add(MapSourceType.Full)  # the set must include Full
+
+        self.configurator = configurator
+
+        self.config = config
+        self.show_rect = show_rect
+        self.figure_collections = self._create_default_figure_collections() \
+            if figure_collections is None else figure_collections
+        if self.figure_collections.keys() != self.used_map_types:
+            raise ValueError("map types in figure_collections should exactly equal to the specified one")
+
+        self.h5_heatmaps = h5_heatmaps
+        self.skip = skip
+        self.sources_iter = self._create_default_heatmaps_iter() if sources_iter is None else sources_iter
+
+    def __next__(self) -> dict[MapType, FigureCollection]:
+        if self._inner_iterator is None:
+            self._inner_iterator = self._create_inner_iterator()
+        return next(self._inner_iterator)
+
+    def _create_inner_iterator(self) -> Iterator[dict[MapType, FigureCollection]]:
+        for sources in self.sources_iter:
+            self.configurator.configure(sources, self.figure_collections)
+            yield self.figure_collections
+
+    def _create_default_figure_collections(self) -> dict[MapType, FigureCollection]:
+        if self.config is None:
+            raise ValueError("default figure_collections needs config specified in constructor")
+        figure_collections = {}
+        for typ in self.used_map_types:
+            fig = plt.figure()
+            ax = fig.add_subplot(111, polar=typ is MapType.PolarFull)
+            figure_collections[typ] = FigureCollection(fig, ax)
+
+        # noinspection PyTypeChecker
         plotter = HeatmapPlotter(
-            config,
-            full=axs.get(MapType.Full),
-            polar_full=axs.get(MapType.PolarFull),
-            zones={i: axs[typ] for i, typ in enumerate(ZONE_MAP_TYPES) if typ in axs}
+            self.config,
+            full=figure_collections.get(MapType.Full).ax,
+            polar_full=figure_collections.get(MapType.PolarFull).ax,
+            zones={
+                i: figure_collections[typ]
+                for i, typ in enumerate(ZONE_MAP_TYPES)
+                if typ in figure_collections
+            }
         )
-        plotter.set_show_rect(show_rect)
+        plotter.set_show_rect(self.show_rect)
         plotter.initialize()
 
         for typ, mesh_getter in TYPE_MESH_GETTER_MAP.items():
-            if typ in used_map_types:
-                meshes[typ] = mesh_getter(plotter)
+            if typ in self.used_map_types:
+                figure_collections[typ].mesh = mesh_getter(plotter)
 
-        used_map_source_types: set[MapSourceType] = {TYPE_SOURCE_MAP[typ] for typ in used_map_types}
+        return figure_collections
 
-        averager_params = dict(window_size=4, low=1000, init=0)
-        averager: Averager
-        if sep_averager:
-            averager = {map_source: RollingAverage(**averager_params) for map_source in used_map_source_types}
-        else:
-            averager = RollingAverage(**averager_params)
+    def _create_default_heatmaps_iter(self) -> HeatmapSourcesIterator:
+        if self.h5_heatmaps is None:
+            raise ValueError("default heatmap needs h5_heatmaps specified in constructor")
+        sources_typ_mapping = {
+            source: np.asarray(self.h5_heatmaps[source.value])
+            for source in self.used_map_source_types
+        }
 
-        sources: dict[MapSourceType, np.ndarray] = {source: np.asarray(fp[source.value]) for source in ALL_SOURCE_TYPES}
+        for i in range(self.skip, len(sources_typ_mapping[MapSourceType.Full])):
+            yield {typ: sources_typ_mapping[typ][i] for typ in self.used_map_source_types}
 
-        for i in range(skip, len(sources[MapSourceType.Full])):
-            high_bounds = _update_averager(averager, sources, i, sep_averager)
-            result_images = {}
-            for typ, mesh in meshes.items():
-                source_typ = TYPE_SOURCE_MAP[typ]
-                mesh.set_clim(0, high_bounds[source_typ])
-                mesh.set_array(sources[source_typ][i])
-                result_images[typ] = convert_fig_to_image(figs[typ], draw=True)
-            yield result_images
-    finally:
-        for fig in figs.values():
+    def finalize(self) -> None:
+        for figure_collection in self.figure_collections.values():
+            fig = figure_collection.figure
             fig.clf()
             plt.close(fig)
 
+    def __enter__(self):
+        return self
 
-def _update_averager(
-        averager: Averager,
-        sources: dict[MapSourceType, np.ndarray],
-        source_idx: int,
-        sep_averager: bool
-) -> dict[MapSourceType, float]:
-    result = {}
-    if sep_averager:
-        for source_typ, source in sources.items():
-            result[source_typ] = averager[source_typ].next(np.max(source[source_idx]))
-    else:
-        value = averager.next(np.max(sources[MapSourceType.Full][source_idx]))
-        for source_typ in sources:
-            result[source_typ] = value
-    return result
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.finalize()
+
+
+class HeatmapConfiguratorBase(ABC):
+    @abstractmethod
+    def configure(
+            self,
+            sources: dict[MapSourceType, np.ndarray],
+            figure_collections: dict[MapType, FigureCollection]
+    ) -> None: ...
+
+
+class HeatmapConfiguratorDecorator(HeatmapConfiguratorBase):
+    configurator: HeatmapConfiguratorBase
+
+    def __init__(self, configurator: HeatmapConfiguratorBase):
+        self.configurator = configurator
+
+    def configure(
+            self,
+            sources: dict[MapSourceType, np.ndarray],
+            figure_collections: dict[MapType, FigureCollection]
+    ) -> None:
+        self.configurator.configure(sources, figure_collections)
+
+
+class MeshUpdater(HeatmapConfiguratorBase):
+
+    def configure(
+            self,
+            sources: dict[MapSourceType, np.ndarray],
+            figure_collections: dict[MapType, FigureCollection]
+    ) -> None:
+        for typ, figure_collection in figure_collections.items():
+            figure_collection.mesh.set_array(sources[TYPE_SOURCE_MAP[typ]])
+
+
+class AveragingLimitUpdaterBase(HeatmapConfiguratorDecorator, ABC):
+    def __init__(self, configurator: HeatmapConfiguratorBase, rolling_average_factory: Callable[[], RollingAverage]):
+        super().__init__(configurator)
+        self._initialize_rolling_averages(rolling_average_factory)
+
+    def configure(
+            self,
+            sources: dict[MapSourceType, np.ndarray],
+            figure_collections: dict[MapType, FigureCollection]
+    ) -> None:
+        high_bounds = self._get_high_bound(sources)
+        for typ, figure_collection in figure_collections.items():
+            figure_collection.mesh.set_clim(0, high_bounds[TYPE_SOURCE_MAP[typ]])
+        super().configure(sources, figure_collections)
+
+    @abstractmethod
+    def _initialize_rolling_averages(self, rolling_average_factory: Callable[[], RollingAverage]) -> None: ...
+
+    @abstractmethod
+    def _get_high_bound(self, sources: dict[MapSourceType, np.ndarray]) -> dict[MapSourceType, float]: ...
+
+
+class AveragingLimitUpdater(AveragingLimitUpdaterBase):
+    average: RollingAverage
+
+    def _initialize_rolling_averages(self, rolling_average_factory: Callable[[], RollingAverage]) -> None:
+        self.average = rolling_average_factory()
+
+    def _get_high_bound(self, sources: dict[MapSourceType, np.ndarray]) -> dict[MapSourceType, float]:
+        bound = np.max(sources[MapSourceType.Full])
+        return {typ: bound for typ in sources}
+
+
+class SeparatingAveragingLimitUpdater(AveragingLimitUpdaterBase):
+    averages: dict[MapSourceType, RollingAverage]
+    rolling_average_factory: Callable[[], RollingAverage]
+
+    def _initialize_rolling_averages(self, rolling_average_factory: Callable[[], RollingAverage]) -> None:
+        self.averages = {}
+        self.rolling_average_factory = rolling_average_factory
+
+    def _get_high_bound(self, sources: dict[MapSourceType, np.ndarray]) -> dict[MapSourceType, float]:
+        bounds = {}
+        for typ, source in sources.items():
+            if typ not in self.averages:
+                self.averages[typ] = self.rolling_average_factory()
+            bounds[typ] = self.averages[typ].next(np.max(source))
+        return bounds
 
 
 def get_arg_parser() -> argparse.ArgumentParser:
