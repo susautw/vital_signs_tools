@@ -261,17 +261,17 @@ class HeatmapConfiguratorBase(ABC):
 
 
 class HeatmapConfiguratorDecorator(HeatmapConfiguratorBase):
-    configurator: HeatmapConfiguratorBase
+    component: HeatmapConfiguratorBase
 
     def __init__(self, configurator: HeatmapConfiguratorBase):
-        self.configurator = configurator
+        self.component = configurator
 
     def configure(
             self,
             sources: dict[MapSourceType, np.ndarray],
             figure_collections: dict[MapType, FigureCollection]
     ) -> None:
-        self.configurator.configure(sources, figure_collections)
+        self.component.configure(sources, figure_collections)
 
 
 class MeshUpdater(HeatmapConfiguratorBase):
