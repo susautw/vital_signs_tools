@@ -3,7 +3,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import IntEnum, Enum
 from pathlib import Path
-from typing import Union, Iterator, Callable, Optional
+from typing import Iterator, Callable, Optional
 
 import cv2
 import h5py
@@ -56,8 +56,6 @@ TYPE_MESH_GETTER_MAP = {
 ALL_MAP_TYPES = (MapType.Full, MapType.PolarFull, MapType.Zone0, MapType.Zone1)
 ALL_SOURCE_TYPES = (MapSourceType.Full, MapSourceType.Zone0, MapSourceType.Zone1)
 ZONE_MAP_TYPES = (MapType.Zone0, MapType.Zone1)
-
-Averager = Union[RollingAverage, dict[MapSourceType, RollingAverage]]
 
 
 def main(args_=None):
@@ -119,16 +117,16 @@ def h5_to_images(
     configurator = MeshUpdater()
 
     if sep_averager:
-        configurator = SeparatingAveragingLimitDecorator(configurator, _rolling_average_factory)
+        configurator = SeparatingAveragingLimitDecorator(configurator, rolling_average_factory)
     else:
-        configurator = AveragingLimitDecorator(configurator, _rolling_average_factory)
+        configurator = AveragingLimitDecorator(configurator, rolling_average_factory)
 
     used_map_types, used_map_source_types = get_map_types_and_sources(map_typ)
 
     with HeatmapFigureIterator(
             configurator,
             get_figure_collections(used_map_types, config, show_rect),
-            get_heatmaps_iter_factory(used_map_source_types, fp, skip)
+            get_heatmaps_iter(used_map_source_types, fp, skip)
     ) as heatmap_fig_iter:
         initialize_hook(heatmap_fig_iter)
 
@@ -139,7 +137,7 @@ def h5_to_images(
             }
 
 
-def _rolling_average_factory():
+def rolling_average_factory():
     return RollingAverage(window_size=4, low=1000, init=0)
 
 
@@ -219,8 +217,8 @@ def get_figure_collections(
     # noinspection PyTypeChecker
     plotter = HeatmapPlotter(
         config,
-        full=figure_collections.get(MapType.Full).ax,
-        polar_full=figure_collections.get(MapType.PolarFull).ax,
+        full=_get_ax_from_figure_collections(figure_collections, MapType.Full),
+        polar_full=_get_ax_from_figure_collections(figure_collections, MapType.PolarFull),
         zones={
             i: figure_collections[typ]
             for i, typ in enumerate(ZONE_MAP_TYPES)
@@ -237,7 +235,15 @@ def get_figure_collections(
     return figure_collections
 
 
-def get_heatmaps_iter_factory(
+def _get_ax_from_figure_collections(
+        figure_collections: dict[MapType, FigureCollection],
+        typ: MapType
+) -> Optional[plt.Axes]:
+    fc = figure_collections.get(typ)
+    return fc if fc is None else fc.ax
+
+
+def get_heatmaps_iter(
         used_map_source_types: set[MapSourceType],
         h5_heatmaps: h5py.File,
         skip: int = 0
@@ -286,9 +292,9 @@ class MeshUpdater(HeatmapConfiguratorBase):
 
 
 class AveragingLimitDecoratorBase(HeatmapConfiguratorDecorator, ABC):
-    def __init__(self, configurator: HeatmapConfiguratorBase, rolling_average_factory: Callable[[], RollingAverage]):
+    def __init__(self, configurator: HeatmapConfiguratorBase, factory: Callable[[], RollingAverage]):
         super().__init__(configurator)
-        self._initialize_rolling_averages(rolling_average_factory)
+        self._initialize_rolling_averages(factory)
 
     def configure(
             self,
@@ -301,7 +307,7 @@ class AveragingLimitDecoratorBase(HeatmapConfiguratorDecorator, ABC):
         super().configure(sources, figure_collections)
 
     @abstractmethod
-    def _initialize_rolling_averages(self, rolling_average_factory: Callable[[], RollingAverage]) -> None: ...
+    def _initialize_rolling_averages(self, factory: Callable[[], RollingAverage]) -> None: ...
 
     @abstractmethod
     def _get_high_bound(self, sources: dict[MapSourceType, np.ndarray]) -> dict[MapSourceType, float]: ...
@@ -310,8 +316,8 @@ class AveragingLimitDecoratorBase(HeatmapConfiguratorDecorator, ABC):
 class AveragingLimitDecorator(AveragingLimitDecoratorBase):
     average: RollingAverage
 
-    def _initialize_rolling_averages(self, rolling_average_factory: Callable[[], RollingAverage]) -> None:
-        self.average = rolling_average_factory()
+    def _initialize_rolling_averages(self, factory: Callable[[], RollingAverage]) -> None:
+        self.average = factory()
 
     def _get_high_bound(self, sources: dict[MapSourceType, np.ndarray]) -> dict[MapSourceType, float]:
         bound = np.max(sources[MapSourceType.Full])
@@ -322,9 +328,9 @@ class SeparatingAveragingLimitDecorator(AveragingLimitDecoratorBase):
     averages: dict[MapSourceType, RollingAverage]
     rolling_average_factory: Callable[[], RollingAverage]
 
-    def _initialize_rolling_averages(self, rolling_average_factory: Callable[[], RollingAverage]) -> None:
+    def _initialize_rolling_averages(self, factory: Callable[[], RollingAverage]) -> None:
         self.averages = {}
-        self.rolling_average_factory = rolling_average_factory
+        self.rolling_average_factory = factory
 
     def _get_high_bound(self, sources: dict[MapSourceType, np.ndarray]) -> dict[MapSourceType, float]:
         bounds = {}

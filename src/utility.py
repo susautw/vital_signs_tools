@@ -4,7 +4,7 @@ import inspect
 import time
 from collections import deque
 from math import inf
-from typing import Any
+from typing import Any, Sequence
 
 import cv2
 import numpy as np
@@ -91,3 +91,26 @@ def convert_fig_to_image(fig: plt.Figure, draw=False) -> np.ndarray:
     img = img.reshape((h, w, 3))
 
     return cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+
+
+def combine_images(
+        image_size: np.ndarray,
+        shape: Sequence[int],
+        images: Sequence[np.ndarray],
+        n_channels: int
+) -> np.ndarray:
+    if len(shape) != 2:
+        raise ValueError("invalid shape: length should be two.")
+    idx_length = np.asarray(shape).prod()
+    if len(images) != idx_length:
+        raise ValueError("invalid images: length should equal to product of shape")
+    w, h = image_size
+    wc, hc = shape
+    combined_shape = [h * hc, w * wc]
+    if n_channels > 1:
+        combined_shape.append(n_channels)
+    combined_image = np.zeros(combined_shape, dtype=np.uint8)
+    for i, img in enumerate(images):
+        x, y = image_size * np.unravel_index(i, shape)[::-1]
+        combined_image[y: y + h, x: x + w] = img
+    return combined_image

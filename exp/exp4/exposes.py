@@ -17,20 +17,20 @@ TYPE_FIG_CONTENT_RANGE_MAP = {  # (W_start, W_end, H_start, H_end)
 class HFInitHook:
     fig_sizes: dict[MapType, tuple[int, int]]
     fig_content_range: dict[MapType, np.ndarray]  # [width_start, width_end, height_start, height_end]
-    remove_noise: bool
+    apply_noise_remove: bool
 
     size: dict[MapType, np.ndarray]  # [width, height]
     content_range_idx: dict[MapType, tuple[slice, ...]]
 
     def __init__(
             self,
-            remove_noise: bool,
+            apply_noise_remove: bool,
             fig_sizes: dict[MapType, tuple[int, int]] = None,
             fig_content_range: dict[MapType, np.ndarray] = None,
     ):
         self.fig_sizes = TYPE_FIG_SIZE_MAP if fig_sizes is None else fig_sizes
         self.fig_content_range = TYPE_FIG_CONTENT_RANGE_MAP if fig_content_range is None else fig_content_range
-        self.remove_noise = remove_noise
+        self.apply_noise_remove = apply_noise_remove
 
         self.size = {}
         self.content_range_idx = {}
@@ -47,7 +47,7 @@ class HFInitHook:
             self.size[typ] = np.array([w_e - w_s, h_e - h_s], np.int32)
             fig.tight_layout(pad=0)
 
-        if self.remove_noise:
+        if self.apply_noise_remove:
             prev_configurator = None
             configurator = hf_iter.configurator
 
