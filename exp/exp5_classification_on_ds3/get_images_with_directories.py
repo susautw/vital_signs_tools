@@ -70,7 +70,7 @@ class FileProcessor:
                     lambda images: combine_images(hook.size[MapType.Full], SHAPE, images, 3),
                     map(
                         lambda images: [image[hook.content_range_idx[MapType.Full]] for image in images],
-                        iter_utils.pack(map(to_full_image, hf_it), SEARCH_INTERVAL)
+                        iter_utils.pack(map(self.to_full_image, hf_it), SEARCH_INTERVAL)
                     )
                 ))
 
@@ -79,6 +79,9 @@ class FileProcessor:
             for i, combined_images in enumerate(zip(*combined_image_its)):
                 for profile, combined_image in zip(self.profiles, combined_images):
                     cv2.imwrite(str(save_dirs[profile] / f"{save_dirs[profile].name}_{i}.png"), combined_image)
+
+    def to_full_image(self, figure_collections: dict[MapType, FigureCollection]) -> np.ndarray:
+        return convert_fig_to_image(figure_collections[MapType.Full].figure, draw=True)
 
     def get_and_create_save_dirs(self, path: Path) -> dict[str, Path]:
         save_paths = {
@@ -92,10 +95,6 @@ class FileProcessor:
             save_path.mkdir(exist_ok=True, parents=True)
             save_paths[profile] = save_path
         return save_paths
-
-
-def to_full_image(figure_collections: dict[MapType, FigureCollection]) -> np.ndarray:
-    return convert_fig_to_image(figure_collections[MapType.Full].figure, draw=True)
 
 
 def get_peak_aligned_sources_iter(
