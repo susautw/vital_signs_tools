@@ -6,9 +6,9 @@ from datetime import datetime
 from functools import cache, cached_property
 from io import BytesIO
 from pathlib import Path
-from queue import Queue
+from queue import Queue, Empty
 from threading import Thread
-from typing import Type, Union, IO, Optional
+from typing import Type, Union, IO, Optional, Sequence, Any
 
 import serial
 from fancy import config as cfg
@@ -20,13 +20,13 @@ import matplotlib as mpl
 
 import structures
 from config_loader import SequentialLoader, MMWaveConfigLoader
-from occupancy_and_vital_signs_detection.plots import HeatmapPlotter
+from plots import HeatmapPlotter
 from sdk_configs import ChannelConfig, FrameConfig, ProfileConfig, ChirpConfig
 from tlv import from_stream, TLVFrameParser, TLVFrame
 from utility import RollingAverage
 
 logger = logging.getLogger("root")
-logger.setLevel(logging.WARNING)
+logger.setLevel(logging.INFO)
 logger.addHandler(logging.StreamHandler(sys.stdout))
 
 args: "ArgConfig"
@@ -59,33 +59,39 @@ def main():
     load_and_send_config(args.config, cli_port)
     logger.info(f"config has loaded.")
 
+    tlv_frame_parser = get_parser(config)
+    delay = config.frame_cfg.frame_periodicity_in_ms / 1000 if args.mode == "file" else None
+
+    queue = Queue(maxsize=args.queue_size)
+    read_thread = Thread(target=read_packet_to_queue, args=(data_stream, tlv_frame_parser, delay, queue), daemon=True)
+
     visualizer = Visualizer(
-        100, config.zone_def.number_of_zones
+        100, config.zone_def.number_of_zones,
     )
 
-    tlv_frame_parser = get_parser(config)
-
-    delay = config.frame_cfg.frame_periodicity_in_ms / 1000 if args.mode == "file" else None
     finalizer = get_finalizer(data_stream, cli_port, visualizer.fig.canvas)
 
     visualizer.start()
     logger.info("visualizer has start")
-    queue = Queue(maxsize=args.queue_size)
-    read_thread = Thread(target=read_packet_to_queue, args=(data_stream, tlv_frame_parser, delay, queue))
     read_thread.start()
     logger.info("read_thread has start")
 
     try:
         while read_thread.is_alive() and not finalized:
-            frame, skip = queue.get()
-            accept_frame(frame, skip)
-            if (ratio := queue.qsize() / queue.maxsize) > QUEUE_WARNING_RATIO:
-                logger.warning(f'frame {frame.frame_header.frame_number} / high queue_size_ratio: {ratio:.2%}')
+            try:
+                frame, skip = queue.get(timeout=1)
+                accept_frame(frame, skip)
+                if (ratio := queue.qsize() / queue.maxsize) > QUEUE_WARNING_RATIO:
+                    logger.warning(f'frame {frame.frame_header.frame_number} / high queue_size_ratio: {ratio:.2%}')
+                else:
+                    logger.info(f'frame {frame.frame_header.frame_number}')
+            except Empty:
+                pass
     except KeyboardInterrupt:
-        print("Interrupted!")
+        logger.info("Interrupted!")
     finally:
         finalizer(None)
-    print("Done.")
+    logger.info("Done.")
 
 
 def get_parser(config_: "Config"):
@@ -101,24 +107,24 @@ def get_parser(config_: "Config"):
     return tlv_frame_parser
 
 
-def read_packet_to_queue(data_stream, tlv_frame_parser, delay, queue: Queue):
+def read_packet_to_queue(data_stream, tlv_frame_parser, delay, q: Queue):
     skip = 0
     with args.binary_packet_file:
         for frame in from_stream(data_stream, tlv_frame_parser, delay=delay):
             if skip > 0:
                 skip -= 1
-                queue.put((frame, True))
+                q.put((frame, True))
                 continue
-            queue_size_ratio = queue.qsize() / args.queue_size
+            queue_size_ratio = q.qsize() / args.queue_size
             for ratio in args.packet_loss_threshold:
                 if queue_size_ratio > ratio:
                     skip += args.packet_loss_threshold[ratio]
                     break
-            queue.put((frame, False))
+            q.put((frame, False))
 
 
 def accept_frame(frame: TLVFrame, skip: bool):
-    logger.info(f"get {len(frame)} tlvs from a frame")
+    logger.debug(f"get {len(frame)} tlvs from a frame")
     if args.should_store_packets:
         args.binary_packet_file.write(frame.raw_data)
     if skip:
@@ -166,10 +172,10 @@ class Visualizer:
 
     fig: plt.Figure
     fig_info: plt.Figure
-    fig_info_plots: dict[str, list["PlotUpdater"]]
-
     fig_heatmap: plt.Figure
-    heatmap_updater: "HeatmapUpdater"
+    plot_updaters: list["IPlotUpdater"]
+
+    bg_cache: Any
 
     def __init__(self, max_signal_len: int, num_zones: int):
         self.max_signal_len = max_signal_len
@@ -183,11 +189,14 @@ class Visualizer:
 
         self.fig_info = self.fig.add_subfigure(gs[1, 0])
         self.fig_heatmap = self.fig.add_subfigure(gs[1, 1])
+        self.plot_updaters = []
         self._init_info_plots()
         self._init_heatmap()
 
+        self.fig.canvas.draw()
+        self.bg_cache = self.fig.canvas.copy_from_bbox(self.fig.bbox)
+
     def _init_info_plots(self):
-        self.fig_info_plots = {}
         gs: plt.GridSpec = self.fig_info.add_gridspec(
             5, self.num_zones,
             height_ratios=[0.2, 1, 1, 1, 1],
@@ -196,8 +205,9 @@ class Visualizer:
         for i in range(self.num_zones):
             text_ax: plt.Axes = self.fig_info.add_subplot(gs[0, i])
             text_ax.set_axis_off()
+            geo_sorted_idx = config.zone_def.geo_sorted_ids[i]
             text_ax.text(
-                .5, .5, f"Zone {config.zone_def.geo_sorted_ids[i]}",
+                .5, .5, f"Zone {geo_sorted_idx}",
                 verticalalignment="center",
                 horizontalalignment="center",
                 fontsize="x-large"
@@ -207,9 +217,8 @@ class Visualizer:
                 ax.set_title(plot_name)
                 ax.set_xticks([])
                 line, = ax.plot(np.zeros(self.max_signal_len))
-                self.fig_info_plots.setdefault(plot_name, []).append(
-                    PlotUpdater(plot_name, line)
-                )
+                ax.set_animated(True)
+                self.plot_updaters.append(LinePlotUpdater(plot_name, geo_sorted_idx, line))
 
     def _init_heatmap(self) -> None:
         canvas: plt.FigureCanvasBase = self.fig_heatmap.canvas
@@ -232,19 +241,24 @@ class Visualizer:
         zone_meshes = []
 
         for zone_plot in plotter.zone_plots.values():
+            zone_plot.rect.set_animated(True)
+            zone_plot.mesh.set_animated(True)
             zone_rects.append(zone_plot.rect)
             zone_meshes.append(zone_plot.mesh)
 
-        self.heatmap_updater = HeatmapUpdater(
+        self.plot_updaters.append(HeatmapUpdater(
             plotter.polar_full_mesh,
             zone_meshes,
             zone_rects,
             rolling_avg_window_size=4,
             default_vmax=1000
-        )
+        ))
 
     def start(self) -> None:
         self.fig.show()
+
+    def close(self):
+        self.fig.canvas.close_event()
 
     def set_decision(self, decision: "decision_type") -> None:
         self.decision = decision
@@ -255,30 +269,41 @@ class Visualizer:
     def set_heatmap(self, heatmap: "heatmap_type") -> None:
         self.heatmap = np.asarray(heatmap)
 
-    def update(self):
-        for zone, (zone_decision, zone_vital_signs) in enumerate(zip(self.decision, self.vital_signs)):
-            for plot_name in self.plot_names:
-                self.fig_info_plots[plot_name][config.zone_def.geo_sorted_ids[zone]].update(
-                    getattr(zone_vital_signs, plot_name) if zone_decision else 0,
-                    bool(zone_decision)
-                )
+    def update(self) -> Sequence[plt.Artist]:
+        artists = []
+        for plot_updater in self.plot_updaters:
+            artists.extend(plot_updater.update(self))
 
-        self.heatmap_updater.update(self)
-        self.fig.canvas.draw()
+        self.fig.canvas.restore_region(self.bg_cache)
+        artists.sort(key=lambda x: x.get_zorder())
+        for a in artists:
+            a.axes.draw_artist(a)
+
+        self.fig.canvas.blit(self.fig.bbox)
         self.fig.canvas.flush_events()
+        return artists
 
 
-class PlotUpdater:
+class IPlotUpdater:
+    def update(self, context: Visualizer) -> Sequence[plt.Artist]:
+        raise NotImplementedError()
+
+
+class LinePlotUpdater(IPlotUpdater):
     name: str
     line: plt.Line2D
     axes: plt.Axes
+    idx: int
 
-    def __init__(self, name: str, line: plt.Line2D):
+    def __init__(self, name: str, idx: int, line: plt.Line2D):
         self.name = name
+        self.idx = idx
         self.line = line
         self.axes = line.axes
 
-    def update(self, new_value: float, decision: bool) -> None:
+    def update(self, context: Visualizer) -> Sequence[plt.Artist]:
+        decision = context.decision[self.idx]
+        new_value = getattr(context.vital_signs[self.idx], self.name) if decision else 0
         data = self.line.get_ydata().copy()
         data[0: -1] = data[1:]
         data[-1] = new_value
@@ -288,15 +313,17 @@ class PlotUpdater:
         self.axes.legend(loc="upper left")
         self.axes.relim()
         self.axes.autoscale_view(scalex=False)
+        return self.axes,
 
 
-class HeatmapUpdater:
+class HeatmapUpdater(IPlotUpdater):
     heatmap_artist: QuadMesh
     zone_heatmap_artists: list[QuadMesh]
     zone_heatmaps_vmax: list[RollingAverage]
     zone_rects: list[Rectangle]
     axes: plt.Axes
     heatmap_vmax: RollingAverage
+    artists: list[plt.Artist]
 
     def __init__(
             self,
@@ -315,8 +342,9 @@ class HeatmapUpdater:
             RollingAverage(rolling_avg_window_size, low=default_vmax, init=0)
             for _ in range(config.zone_def.number_of_zones)
         ]
+        self.artists = [self.heatmap_artist, *self.zone_heatmap_artists, *self.zone_rects]
 
-    def update(self, context: "Visualizer"):
+    def update(self, context: Visualizer) -> Sequence[plt.Artist]:
         self.heatmap_artist.set_array(context.heatmap)
         self.heatmap_artist.set_clim(0, self.heatmap_vmax.next(np.max(context.heatmap)))
         for zone, decision, zone_rect, zone_mesh, zone_vmax in zip(
@@ -330,6 +358,8 @@ class HeatmapUpdater:
             zone_mesh.set_array(zone_heatmap)
             zone_mesh.set_clim(0, zone_vmax.next(np.max(zone_heatmap)))
             zone_rect.set_edgecolor("g" if decision else "r")
+
+        return self.artists
 
 
 def load_and_send_config(config_file: Path, cli_port: Optional[serial.Serial]):
