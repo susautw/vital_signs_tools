@@ -3,7 +3,6 @@ import ctypes
 import logging
 import sys
 from datetime import datetime
-from functools import cache, cached_property
 from io import BytesIO
 from pathlib import Path
 from queue import Queue, Empty
@@ -20,6 +19,7 @@ import matplotlib as mpl
 
 import structures
 from config_loader import SequentialLoader, MMWaveConfigLoader
+from core.plot import AbstractZone
 from plots import HeatmapPlotter
 from sdk_configs import ChannelConfig, FrameConfig, ProfileConfig, ChirpConfig
 from tlv import from_stream, TLVFrameParser, TLVFrame
@@ -269,7 +269,7 @@ class Visualizer:
     def set_heatmap(self, heatmap: "heatmap_type") -> None:
         self.heatmap = np.asarray(heatmap)
 
-    def update(self) -> Sequence[plt.Artist]:
+    def update(self):
         artists = []
         for plot_updater in self.plot_updaters:
             artists.extend(plot_updater.update(self))
@@ -407,22 +407,11 @@ class GUIConfig(cfg.BaseConfig):
         self.heatmap_dtype = self.heatmap_dtype_map[self.heatmap]
 
 
-class Zone(cfg.BaseConfig):
+class Zone(cfg.BaseConfig, AbstractZone):
     range_start: int = cfg.Option(type=int)
     range_length: int = cfg.Option(type=int)
     azimuth_start: int = cfg.Option(type=int)
     azimuth_length: int = cfg.Option(type=int)
-
-    @cache
-    def order(self) -> tuple[float, float]:
-        return self.azimuth_start + self.azimuth_length // 2, self.range_start + self.range_length // 2
-
-    @cached_property
-    def idx_slice(self) -> tuple[slice, slice]:
-        return (
-            slice(self.range_start, self.range_start + self.range_length),
-            slice(self.azimuth_start, self.azimuth_start + self.azimuth_length)
-        )
 
 
 class ZoneDef(cfg.BaseConfig):
