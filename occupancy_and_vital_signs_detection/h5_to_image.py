@@ -14,7 +14,7 @@ from matplotlib.collections import QuadMesh
 from config_loader import MMWaveConfigLoader
 from occupancy_and_vital_signs_detection.main import Config
 from occupancy_and_vital_signs_detection.plots import HeatmapPlotter
-from utility import RollingAverage, convert_fig_to_image
+from utility import RollingAverage, convert_artist_to_image
 
 args: argparse.Namespace
 
@@ -132,7 +132,7 @@ def h5_to_images(
 
         for fig_collections in heatmap_fig_iter:
             yield {
-                typ: convert_fig_to_image(fig_collection.figure, draw=True)
+                typ: convert_artist_to_image(fig_collection.figure, draw=True)
                 for typ, fig_collection in fig_collections.items()
             }
 

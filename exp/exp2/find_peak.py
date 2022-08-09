@@ -8,7 +8,7 @@ from matplotlib import pyplot as plt
 from config_loader import MMWaveConfigLoader
 from occupancy_and_vital_signs_detection.main import Config
 from occupancy_and_vital_signs_detection.plots import HeatmapPlotter
-from utility import RollingAverage, convert_fig_to_image
+from utility import RollingAverage, convert_artist_to_image
 
 BASE_DIR = Path(__file__).parent
 
@@ -72,7 +72,7 @@ def plot_heatmap(heatmaps: np.ndarray, full_heatmaps: np.ndarray, output: Path, 
         fig.savefig(output.with_stem(f'{output.stem}_{i:04d}'))
         if max_idx <= i < max_idx + 49:
             start = np.array(np.unravel_index(i - max_idx, shape=(7, 7))) * size
-            combined[start[0]: start[0] + h, start[1]: start[1] + w] = convert_fig_to_image(fig)
+            combined[start[0]: start[0] + h, start[1]: start[1] + w] = convert_artist_to_image(fig)
 
     cv2.imwrite(str(output.with_stem(f'{output.stem}_combined')), combined)
     fig.clf()

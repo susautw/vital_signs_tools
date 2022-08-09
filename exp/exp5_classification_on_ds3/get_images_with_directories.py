@@ -14,7 +14,7 @@ from exp.exp4.exposes import RemoveNoiseDecorator, HFInitHook
 from occupancy_and_vital_signs_detection.h5_to_image import MapType, MapSourceType, HeatmapFigureIterator, \
     MeshUpdater, AveragingLimitDecorator, rolling_average_factory, get_figure_collections, FigureCollection
 from occupancy_and_vital_signs_detection.main import Config
-from utility import convert_fig_to_image, combine_images
+from utility import convert_artist_to_image, combine_images
 
 BASE_DIR = Path(__file__).parent
 DS_D3_DIR = BASE_DIR.parent.parent / "datasets" / "ds3"
@@ -81,7 +81,7 @@ class FileProcessor:
                     cv2.imwrite(str(save_dirs[profile] / f"{save_dirs[profile].name}_{i}.png"), combined_image)
 
     def to_full_image(self, figure_collections: dict[MapType, FigureCollection]) -> np.ndarray:
-        return convert_fig_to_image(figure_collections[MapType.Full].figure, draw=True)
+        return convert_artist_to_image(figure_collections[MapType.Full].figure, draw=True)
 
     def get_and_create_save_dirs(self, path: Path) -> dict[str, Path]:
         save_paths = {

@@ -9,6 +9,7 @@ from typing import Any, Sequence
 import cv2
 import numpy as np
 from matplotlib import pyplot as plt
+from matplotlib.artist import Artist
 
 
 @contextlib.contextmanager
@@ -83,13 +84,17 @@ def structure_to_dict(struct: ctypes.Structure) -> dict[str, Any]:
     return result
 
 
-def convert_fig_to_image(fig: plt.Figure, draw=False) -> np.ndarray:
+def convert_artist_to_image(artist: Artist, *, draw=False, bbox=None) -> np.ndarray:
+    # noinspection PyTypeChecker
+    base_fig: plt.Figure = artist.get_figure()
+    if bbox is None:
+        if hasattr(artist, "bbox"):
+            bbox = artist.bbox
+        else:
+            raise ValueError("artist is not have bbox property")
     if draw:
-        fig.canvas.draw()
-    img = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
-    w, h = fig.canvas.get_width_height()
-    img = img.reshape((h, w, 3))
-
+        base_fig.canvas.draw()
+    img = np.asarray(base_fig.canvas.copy_from_bbox(bbox))
     return cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
 
 
