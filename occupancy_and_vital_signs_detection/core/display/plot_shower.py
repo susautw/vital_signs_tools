@@ -1,3 +1,4 @@
+import time
 from typing import Iterator
 
 import matplotlib.pyplot as plt
@@ -17,12 +18,14 @@ class PlotShower(IPlotDisplayer):
             base_fig: plt.Figure,
             source_it: Iterator[MMWInfo],
             plot: IPlot,
-            configurator_pipeline: PlotConfiguratorPipeline
+            configurator_pipeline: PlotConfiguratorPipeline,
+            delay: float
     ):
         self.base_fig = base_fig
         self.source_it = source_it
         self.plot = plot
         self.configurator_pipeline = configurator_pipeline
+        self.delay = delay
 
     def display(self) -> None:
         self._finalized = False
@@ -39,6 +42,7 @@ class PlotShower(IPlotDisplayer):
                 self.plot.draw()
                 canvas.blit(self.base_fig.bbox)
                 canvas.flush_events()
+                time.sleep(self.delay)
         finally:
             if not self._finalized:  # program finished with an exception.
                 canvas.close_event()
