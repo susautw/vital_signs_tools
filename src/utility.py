@@ -85,13 +85,12 @@ def structure_to_dict(struct: ctypes.Structure) -> dict[str, Any]:
 
 
 def convert_artist_to_image(artist: Artist, *, draw=False, bbox=None) -> np.ndarray:
-    # noinspection PyTypeChecker
-    base_fig: plt.Figure = artist.get_figure()
     if bbox is None:
         if hasattr(artist, "bbox"):
             bbox = artist.bbox
         else:
-            raise ValueError("artist is not have bbox property")
+            raise ValueError(f"{artist} is not have bbox property")
+    base_fig: plt.Figure = artist.get_figure()
     if draw:
         base_fig.canvas.draw()
     img = np.asarray(base_fig.canvas.copy_from_bbox(bbox))
