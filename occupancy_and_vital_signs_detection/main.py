@@ -19,15 +19,11 @@ import matplotlib as mpl
 
 import structures
 from config_loader import SequentialLoader, MMWaveConfigLoader
-from core.plot import AbstractZone
-from plots import HeatmapPlotter
+from occupancy_and_vital_signs_detection.core.plot import AbstractZone
+from occupancy_and_vital_signs_detection.plots import HeatmapPlotter
 from sdk_configs import ChannelConfig, FrameConfig, ProfileConfig, ChirpConfig
 from tlv import from_stream, TLVFrameParser, TLVFrame
 from utility import RollingAverage
-
-logger = logging.getLogger("root")
-logger.setLevel(logging.INFO)
-logger.addHandler(logging.StreamHandler(sys.stdout))
 
 args: "ArgConfig"
 config: "Config"
@@ -520,4 +516,7 @@ def get_arg_parser() -> argparse.ArgumentParser:
 
 
 if __name__ == '__main__':
+    logger = logging.getLogger("root")
+    logger.setLevel(logging.INFO)
+    logger.addHandler(logging.StreamHandler(sys.stdout))
     exit(main())
