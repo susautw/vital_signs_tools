@@ -15,7 +15,7 @@ class PlotType(IntEnum):
     FULL_HMAP = 3
 
 
-class PlotBuilder:
+class PlotGroupBuilder:
     x_axis: np.ndarray = None
     y_axis: np.ndarray = None
     type_fig_map: dict[tuple[PlotType, Optional[AbstractZone]], FigureBase]
@@ -26,13 +26,13 @@ class PlotBuilder:
         self.type_fig_map = {}
         self.zones = []
 
-    def with_config(self, config: Config) -> "PlotBuilder":
+    def with_config(self, config: Config) -> "PlotGroupBuilder":
         azm_space_deg = np.linspace(-60, 60, config.num_angle_bins)
         rad_space = np.linspace(0, 3, config.num_range_bins)
         self.x_axis, self.y_axis = np.meshgrid(np.deg2rad(azm_space_deg), rad_space)
         return self
 
-    def add_plot_type(self, plot_type: PlotType, fig: FigureBase, zone: AbstractZone = None) -> "PlotBuilder":
+    def add_plot_type(self, plot_type: PlotType, fig: FigureBase, zone: AbstractZone = None) -> "PlotGroupBuilder":
         if not (0 <= plot_type <= 3):
             raise ValueError(f"invalid plot_type {plot_type}")
         if plot_type <= PlotType.ZONE_HMAP:
@@ -43,17 +43,17 @@ class PlotBuilder:
         self.type_fig_map[plot_type, None] = fig
         return self
 
-    def add_zone(self, zone: AbstractZone) -> "PlotBuilder":
+    def add_zone(self, zone: AbstractZone) -> "PlotGroupBuilder":
         if zone not in self.zones:
             self.zones.append(zone)
         return self
 
-    def set_show_rect_in_hmap(self, val: bool) -> "PlotBuilder":
+    def set_show_rect_in_hmap(self, val: bool) -> "PlotGroupBuilder":
         self.show_rect_in_hmap = val
         return self
 
-    def build(self) -> list[plots.IPlot]:
-        result = []
+    def build(self) -> plots.PlotGroup:
+        pg = plots.PlotGroup()
         for (plot_type, zone), fig in self.type_fig_map.items():
             plot: plots.IPlot
             if plot_type == PlotType.ZONE_INFO:
@@ -70,5 +70,5 @@ class PlotBuilder:
                 )
             else:
                 raise RuntimeError("This statement is never executed.")
-            result.append(plot)
-        return result
+            pg.add_plot(plot)
+        return pg
