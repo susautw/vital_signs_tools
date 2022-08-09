@@ -30,7 +30,27 @@ class IPlot(ABC, Generic[T]):
 class ZoneInfoPlot(IPlot): ...
 
 
-class PlotGroup(IPlot): ...
+class PlotGroup(IPlot[None]):
+    _children: list[IPlot]
+
+    def __init__(self):
+        self._children = []
+
+    def draw(self) -> None:
+        for p in self._children:
+            p.draw()
+
+    def accept(self, visitor: "IPlotVisitor"):
+        visitor.visit_plot_group(self)
+
+    def get_plots(self) -> list[IPlot]:
+        return self._children
+
+    def add_plot(self, *p: IPlot) -> None:
+        self._children.extend(p)
+    
+    def set_data(self, data: None) -> None:
+        raise RuntimeError("group does not accept data")
 
 
 class AbstractHMapPlot(IPlot[T], ABC):

@@ -13,7 +13,8 @@ class AbstractPlotConfigurator(IPlotVisitor, ABC):
         pass
 
     def visit_plot_group(self, plot: plots.PlotGroup):
-        pass
+        for p in plot.get_plots():
+            p.accept(self)
 
     def visit_abstract_hmap_plot(self, plot: plots.AbstractHMapPlot):
         pass
