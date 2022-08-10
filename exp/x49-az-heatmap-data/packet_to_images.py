@@ -1,5 +1,4 @@
 import argparse
-from abc import ABC, abstractmethod
 from pathlib import Path
 
 import numpy as np
@@ -8,13 +7,14 @@ from matplotlib.collections import QuadMesh
 from matplotlib.figure import Figure
 
 from config_loader import MMWaveConfigLoader
-from occupancy_and_vital_signs_detection.main import Config, get_parser
+from ovsd.configs import OVSDConfig
 from occupancy_and_vital_signs_detection.plots import HeatmapPlotter
+from ovsd.structures import get_parser
 
 from tlv import from_stream, TLVFrame
 from utility import RollingAverage
 
-configs: dict[str, Config] = {}
+configs: dict[str, OVSDConfig] = {}
 args: argparse.Namespace
 DEFAULT_CONFIG = "30cm"
 
@@ -35,7 +35,7 @@ def main():
 
     for profile, config_file in config_files.items():
         with config_file.open() as fp:
-            configs[profile] = Config(MMWaveConfigLoader(fp.readlines()))
+            configs[profile] = OVSDConfig(MMWaveConfigLoader(fp.readlines()))
     plots = init_plots()
     args.output.mkdir(parents=True, exist_ok=True)
 
@@ -90,7 +90,7 @@ class FrameAcceptor:
         self.heatmap_vmax.reset()
 
     def accept(self, frame: TLVFrame) -> bool:
-        from occupancy_and_vital_signs_detection.main import heatmap_type
+        from ovsd.structures import heatmap_type
         if frame.frame_header.frame_number < self.num_skip_frames:
             return True
         for tlv in frame:

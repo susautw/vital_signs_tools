@@ -7,14 +7,14 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from config_loader import MMWaveConfigLoader
-from occupancy_and_vital_signs_detection.ovsd.display.plot_shower import PlotShower
-from occupancy_and_vital_signs_detection.ovsd.mmw_info_iter import HMapOnlyMMWInfoIterator
-from occupancy_and_vital_signs_detection.ovsd.plot.plots_builder import PlotGroupBuilder, PlotType
-from occupancy_and_vital_signs_detection.ovsd.plot_configurator import PlotConfiguratorPipeline
-from occupancy_and_vital_signs_detection.ovsd.plot_configurator.hmap_clim_updater import HMapCLimUpdater
-from occupancy_and_vital_signs_detection.ovsd.plot_configurator.plot_updater import PlotUpdater
+from ovsd.display import PlotShower
+from ovsd.mmw_info_iter import HMapOnlyMMWInfoIterator
+from ovsd.plot.plots_builder import PlotGroupBuilder, PlotType
+from ovsd.plot_configurator import PlotConfiguratorPipeline
+from ovsd.plot_configurator.hmap_clim_updater import HMapCLimUpdater
+from ovsd.plot_configurator.plot_updater import PlotUpdater
 from occupancy_and_vital_signs_detection.h5_to_image import rolling_average_factory
-from occupancy_and_vital_signs_detection.main import Config
+from ovsd.configs import OVSDConfig
 
 logger = logging.getLogger("root")
 logger.setLevel(logging.INFO)
@@ -23,7 +23,7 @@ logger.addHandler(logging.StreamHandler(sys.stdout))
 
 def main():
     fp = h5py.File("datasets/ds3/h5_out/angle/+30v.packet.20220706T222723.h5")
-    config = Config(MMWaveConfigLoader(Path("configs/vod_vs_68xx_10fps_center.cfg").read_text().split("\n")))
+    config = OVSDConfig(MMWaveConfigLoader(Path("configs/vod_vs_68xx_10fps_center.cfg").read_text().split("\n")))
     source_it = HMapOnlyMMWInfoIterator(np.asarray(fp['heatmap/full']))
 
     fig: plt.Figure = plt.figure(figsize=(8, 6))

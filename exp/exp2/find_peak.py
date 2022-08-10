@@ -6,7 +6,7 @@ import numpy as np
 from matplotlib import pyplot as plt
 
 from config_loader import MMWaveConfigLoader
-from occupancy_and_vital_signs_detection.main import Config
+from ovsd.configs import OVSDConfig
 from occupancy_and_vital_signs_detection.plots import HeatmapPlotter
 from utility import RollingAverage, convert_artist_to_image
 
@@ -32,7 +32,7 @@ def main():
     }
 
     configs = {
-        name: Config(MMWaveConfigLoader(path.read_text().split("\n")))
+        name: OVSDConfig(MMWaveConfigLoader(path.read_text().split("\n")))
         for name, path in configs_paths.items()
     }
 

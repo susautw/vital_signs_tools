@@ -8,18 +8,18 @@ from matplotlib.patches import Rectangle
 
 
 if TYPE_CHECKING:
-    from occupancy_and_vital_signs_detection.main import Config
+    from ovsd.configs import OVSDConfig
 
 
 class HeatmapPlotter:
     def __init__(
             self,
-            config: "Config", *,
+            config: "OVSDConfig", *,
             full: plt.Axes = None,
             polar_full: plt.PolarAxes = None,
             zones: dict[int, plt.Axes] = None
     ):
-        self.config: "Config" = config
+        self.config: "OVSDConfig" = config
         self.full: plt.Axes = full
         self.polar_full: plt.PolarAxes = polar_full
         self.show_rect: bool = self.polar_full is not None

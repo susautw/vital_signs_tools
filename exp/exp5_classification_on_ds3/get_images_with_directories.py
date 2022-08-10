@@ -13,7 +13,7 @@ from config_loader import MMWaveConfigLoader
 from exp.exp4.exposes import RemoveNoiseDecorator, HFInitHook
 from occupancy_and_vital_signs_detection.h5_to_image import MapType, MapSourceType, HeatmapFigureIterator, \
     MeshUpdater, AveragingLimitDecorator, rolling_average_factory, get_figure_collections, FigureCollection
-from occupancy_and_vital_signs_detection.main import Config
+from ovsd.configs import OVSDConfig
 from utility import convert_artist_to_image, combine_images
 
 BASE_DIR = Path(__file__).parent
@@ -29,7 +29,7 @@ SEARCH_INTERVAL = int(np.asarray(SHAPE).prod())
 
 
 def main():
-    config = Config(MMWaveConfigLoader((DS_D3_DIR / 'vod_vs_68xx_10fps_center.cfg').read_text().split("\n")))
+    config = OVSDConfig(MMWaveConfigLoader((DS_D3_DIR / 'vod_vs_68xx_10fps_center.cfg').read_text().split("\n")))
     h5_paths = sorted(SOURCE_BASE_DIR.glob("**/*.h5"))
     processor = FileProcessor(config)
     for h5_path in h5_paths:
@@ -39,7 +39,7 @@ def main():
 
 
 class FileProcessor:
-    def __init__(self, config: Config):
+    def __init__(self, config: OVSDConfig):
         self.configurators = {
             "normal": AveragingLimitDecorator(MeshUpdater(), rolling_average_factory),
             "noise_removed": AveragingLimitDecorator(RemoveNoiseDecorator(MeshUpdater()), rolling_average_factory)

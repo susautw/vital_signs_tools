@@ -12,7 +12,7 @@ from matplotlib import pyplot as plt
 from matplotlib.collections import QuadMesh
 
 from config_loader import MMWaveConfigLoader
-from occupancy_and_vital_signs_detection.main import Config
+from ovsd.configs import OVSDConfig
 from occupancy_and_vital_signs_detection.plots import HeatmapPlotter
 from utility import RollingAverage, convert_artist_to_image
 
@@ -77,7 +77,7 @@ def main(args_=None):
     if not config_path.is_file():
         raise FileNotFoundError(f'{config_path}')
 
-    config = Config(MMWaveConfigLoader(config_path.read_text().split("\n")))
+    config = OVSDConfig(MMWaveConfigLoader(config_path.read_text().split("\n")))
 
     if not args.map_types:
         raise ValueError(f'please specify at least one map type')
@@ -106,7 +106,7 @@ HeatmapSourcesIteratorFactory = Callable[["HeatmapFigureIterator"], HeatmapSourc
 
 def h5_to_images(
         fp: h5py.File,
-        config: Config,
+        config: OVSDConfig,
         map_typ: int,
         show_rect: bool,
         sep_averager: bool,
@@ -160,7 +160,7 @@ class HeatmapFigureIterator(Iterator[dict[MapType, FigureCollection]]):
 
     configurator: "HeatmapConfiguratorBase"
     figure_collections: dict[MapType, FigureCollection]
-    config: Optional[Config]
+    config: Optional[OVSDConfig]
     show_rect: bool
 
     skip: int
@@ -205,7 +205,7 @@ class HeatmapFigureIterator(Iterator[dict[MapType, FigureCollection]]):
 
 def get_figure_collections(
         used_map_types: set[MapType],
-        config: Config,
+        config: OVSDConfig,
         show_rect: bool
 ) -> dict[MapType, FigureCollection]:
     figure_collections = {}
