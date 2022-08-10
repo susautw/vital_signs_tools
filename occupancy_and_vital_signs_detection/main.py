@@ -19,7 +19,7 @@ import matplotlib as mpl
 
 import structures
 from config_loader import SequentialLoader, MMWaveConfigLoader
-from occupancy_and_vital_signs_detection.core.plot import AbstractZone
+from occupancy_and_vital_signs_detection.ovsd.plot import AbstractZone
 from occupancy_and_vital_signs_detection.plots import HeatmapPlotter
 from sdk_configs import ChannelConfig, FrameConfig, ProfileConfig, ChirpConfig
 from tlv import from_stream, TLVFrameParser, TLVFrame
