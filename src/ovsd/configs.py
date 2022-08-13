@@ -13,7 +13,7 @@ class GUIConfig(cfg.BaseConfig):
     heatmap: int = cfg.Option(type=int)
     vital_signs: bool = cfg.Option(type=bool)
 
-    heatmap_dtype: Type = cfg.PlaceHolder()
+    heatmap_dtype: Type
 
     heatmap_dtype_map = {
         8: ctypes.c_uint8,
@@ -67,7 +67,6 @@ class OVSDConfig(cfg.BaseConfig):
     doppler_resolution_mps: float = cfg.PlaceHolder()
 
     def post_load(self):
-        self.load_lazies()
         self.num_chirps_per_frame = (self.frame_cfg.chirp_end_index
                                      - self.frame_cfg.chirp_start_index + 1) * self.frame_cfg.number_of_loops
 

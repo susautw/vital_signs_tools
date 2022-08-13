@@ -35,9 +35,13 @@ class AbstractZone(ABC):
         return result
 
 
-@dataclass(frozen=True, unsafe_hash=False)
+@dataclass(frozen=True, unsafe_hash=False,)
 class Zone(AbstractZone):
     range_start: int
     range_length: int
     azimuth_start: int
     azimuth_length: int
+
+    # DO NOT Remove this statement
+    #  dataclass does not check the super class's __hash__
+    __hash__ = AbstractZone.__hash__

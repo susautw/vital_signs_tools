@@ -17,8 +17,8 @@ class HMapOnlyMMWInfoIterator(Iterator[MMWInfo]):
         if self.i >= len(self.hmaps):
             raise StopIteration()
         info = MMWInfo(
-            zones=[],
             zone_decisions={},
+            zone_infos={},
             hmap=self.hmaps[self.i]
         )
         self.i += 1

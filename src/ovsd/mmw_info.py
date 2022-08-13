@@ -1,25 +1,21 @@
-from typing import Sequence
-
 import numpy as np
 
 from .plot import AbstractZone
+from .structures import VitalSignsVectorTLV
 
 
 class MMWInfo:
-    zones: list[AbstractZone]
-    # zone_infos: dict[AbstractZone, np.ndarray] = {}  # TODO
+    zone_infos: dict[AbstractZone, VitalSignsVectorTLV]
     zone_decisions: dict[AbstractZone, bool]
     hmap: np.ndarray
 
     def __init__(
             self, *,
-            zones: Sequence[AbstractZone],
-            # zone_infos: dict[AbstractZone, np.ndarray],
+            zone_infos: dict[AbstractZone, VitalSignsVectorTLV],
             zone_decisions: dict[AbstractZone, bool],
             hmap: np.ndarray
     ):
-        self.zones = list(zones)
-        # self.zone_infos = zone_infos
+        self.zone_infos = zone_infos
         self.zone_decisions = zone_decisions
         self.hmap = hmap
 
@@ -36,4 +32,8 @@ class MMWInfo:
         return self.hmap
 
     def copy(self) -> "MMWInfo":
-        return MMWInfo(zones=self.zones.copy(), zone_decisions=self.zone_decisions.copy(), hmap=self.hmap.copy())
+        return MMWInfo(
+            zone_infos=self.zone_infos.copy(),
+            zone_decisions=self.zone_decisions.copy(),
+            hmap=self.hmap.copy()
+        )
