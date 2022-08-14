@@ -67,7 +67,7 @@ class FileProcessor:
                 hook(hf_it)
                 hooks.append(hook)
                 combined_image_its.append(map(
-                    lambda images: combine_images(hook.size[MapType.Full], SHAPE, images, 3),
+                    lambda images: combine_images(SHAPE, images, 3),
                     map(
                         lambda images: [image[hook.content_range_idx[MapType.Full]] for image in images],
                         iter_utils.pack(map(self.to_full_image, hf_it), SEARCH_INTERVAL)

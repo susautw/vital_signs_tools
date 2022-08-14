@@ -54,7 +54,7 @@ def process_one(path: Path, config: OVSDConfig, fp: h5py.File, remove_noise: boo
     )):
         if i >= LENGTH:
             combined_images = {
-                typ: combine_images(hook.size[typ], SHAPE, fragment_images, 3)
+                typ: combine_images(SHAPE, fragment_images, 3)
                 for typ, fragment_images in fragments.items()
             }
             break

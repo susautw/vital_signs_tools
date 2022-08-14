@@ -9,6 +9,9 @@ class PlotConfiguratorPipeline:
     def __init__(self, *configurators: AbstractPlotConfigurator):
         self._configurators = [*configurators]
 
+    def insert_configurator(self, i: int, configurator: AbstractPlotConfigurator):
+        self._configurators.insert(i, configurator)
+
     def add_configurator(self, configurator: AbstractPlotConfigurator):
         self._configurators.append(configurator)
 

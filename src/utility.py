@@ -98,7 +98,6 @@ def convert_artist_to_image(artist: Artist, *, draw=False, bbox=None) -> np.ndar
 
 
 def combine_images(
-        image_size: np.ndarray,
         shape: Sequence[int],
         images: Sequence[np.ndarray],
         n_channels: int
@@ -108,7 +107,8 @@ def combine_images(
     idx_length = np.asarray(shape).prod()
     if len(images) != idx_length:
         raise ValueError("invalid images: length should equal to product of shape")
-    w, h = image_size
+    w, h = images[0].shape[:2]
+    image_size = np.array([w, h])
     wc, hc = shape
     combined_shape = [h * hc, w * wc]
     if n_channels > 1:

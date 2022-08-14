@@ -57,7 +57,7 @@ class AbstractHMapPlot(IPlot[T], ABC):
     fig: FigureBase
     x_axis: np.ndarray
     y_axis: np.ndarray
-    _mesh: QuadMesh
+    mesh: QuadMesh
 
     def __init__(self, fig: FigureBase, x: np.ndarray, y: np.ndarray):
         if x.shape != y.shape:
@@ -67,17 +67,17 @@ class AbstractHMapPlot(IPlot[T], ABC):
         self.x_axis = x
         self.y_axis = y
 
-        self._mesh = self._get_axes().pcolormesh(x, y, np.zeros_like(x))
-        self._mesh.set_animated(True)
+        self.mesh = self.get_axes().pcolormesh(x, y, np.zeros_like(x))
+        self.mesh.set_animated(True)
 
     @abstractmethod
-    def _get_axes(self) -> plt.Axes: ...
+    def get_axes(self) -> plt.Axes: ...
 
     def set_clim(self, cmin: float, cmax: float) -> None:
-        self._mesh.set_clim(cmin, cmax)
+        self.mesh.set_clim(cmin, cmax)
 
     def draw(self):
-        self._get_axes().draw_artist(self._mesh)
+        self.get_axes().draw_artist(self.mesh)
 
     def accept(self, visitor: "IPlotVisitor"):
         visitor.visit_abstract_hmap_plot(self)
@@ -95,8 +95,8 @@ class AbstractFullHMapPlot(AbstractHMapPlot[Tuple[np.ndarray, dict[AbstractZone,
         for zone in rect_zones:
             self._zone_rect_patch[zone] = Rectangle(
                 (
-                    self._mesh.convert_xunits(x_space[zone.azimuth_start]),
-                    self._mesh.convert_yunits(y_space[zone.range_start])
+                    self.mesh.convert_xunits(x_space[zone.azimuth_start]),
+                    self.mesh.convert_yunits(y_space[zone.range_start])
                 ),
                 x_space[zone.azimuth_length] - x_space[0],
                 y_space[zone.range_length] - y_space[0],
@@ -104,11 +104,11 @@ class AbstractFullHMapPlot(AbstractHMapPlot[Tuple[np.ndarray, dict[AbstractZone,
                 linewidth=1
             )
             self._zone_rect_patch[zone].set_animated(True)
-            self._get_axes().add_patch(self._zone_rect_patch[zone])
+            self.get_axes().add_patch(self._zone_rect_patch[zone])
 
     def set_data(self, data: Tuple[np.ndarray, dict[AbstractZone, bool]]) -> None:
         arr, decision = data
-        self._mesh.set_array(arr)
+        self.mesh.set_array(arr)
         for zone, rect in self._zone_rect_patch.items():
             if zone in decision:
                 rect.set_edgecolor("g" if decision[zone] else "r")
@@ -116,7 +116,7 @@ class AbstractFullHMapPlot(AbstractHMapPlot[Tuple[np.ndarray, dict[AbstractZone,
     def draw(self):
         super().draw()
         for artist in sorted(self._zone_rect_patch.values(), key=lambda x: x.get_zorder()):
-            self._get_axes().draw_artist(artist)
+            self.get_axes().draw_artist(artist)
 
     def accept(self, visitor: "IPlotVisitor"):
         super().accept(visitor)
@@ -131,11 +131,11 @@ class ZoneHMapPlot(AbstractHMapPlot[np.ndarray]):
         self.zone = zone
 
     @cache
-    def _get_axes(self) -> plt.Axes:
+    def get_axes(self) -> plt.Axes:
         return self.fig.add_subplot(111)
 
     def set_data(self, data: np.ndarray) -> None:
-        self._mesh.set_array(data)
+        self.mesh.set_array(data)
 
     def accept(self, visitor: "IPlotVisitor"):
         super().accept(visitor)
@@ -144,7 +144,7 @@ class ZoneHMapPlot(AbstractHMapPlot[np.ndarray]):
 
 class PolarHMapPlot(AbstractFullHMapPlot):
     @cache
-    def _get_axes(self) -> plt.Axes:
+    def get_axes(self) -> plt.Axes:
         ax: plt.PolarAxes = self.fig.add_subplot(111, polar=True)
         ax.set_theta_zero_location("N")
         ax.set_thetalim(*np.deg2rad([-60, 60]))
@@ -160,7 +160,7 @@ class PolarHMapPlot(AbstractFullHMapPlot):
 
 class FullHMapPlot(AbstractFullHMapPlot):
     @cache
-    def _get_axes(self) -> plt.Axes:
+    def get_axes(self) -> plt.Axes:
         return self.fig.add_subplot(111)
 
     def accept(self, visitor: "IPlotVisitor"):
