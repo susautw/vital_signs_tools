@@ -1,4 +1,5 @@
 import ctypes
+import warnings
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Iterator, Type
@@ -106,8 +107,11 @@ class V3Dataset(CachedDataset):
                     compound_data['decision'] = t
                 if isinstance(t, structures.vital_signs_type):
                     compound_data['vitalsigns'] = t
-            # noinspection PyTypeChecker
-            compound_data_list.append(np.array(self.compound_type(**compound_data)))
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", ResourceWarning)
+                # noinspection PyTypeChecker
+                compound_data_list.append(np.array(self.compound_type(**compound_data)))
+
         h5fp.create_dataset('mmw_infos', data=np.asarray(compound_data_list))
         metadata = h5fp.create_dataset('metadata', shape=())
         metadata.attrs['zones'] = [
