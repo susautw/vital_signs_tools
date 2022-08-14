@@ -23,7 +23,7 @@ class MMWInfo:
         raise RuntimeError("Not implemented")
 
     def get_zone_decision(self, zone: AbstractZone) -> bool:
-        return self.zone_decisions[zone]
+        return self.zone_decisions.get(zone, False)
 
     def get_zone_hmap(self, zone: AbstractZone) -> np.ndarray:
         return self.hmap[zone.idx_slice]

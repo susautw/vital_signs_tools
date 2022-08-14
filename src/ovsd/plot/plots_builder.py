@@ -40,7 +40,8 @@ class PlotGroupBuilder:
                 raise ValueError("Zone plot types must specify a zone")
             self.type_fig_map[plot_type, zone] = fig
             self.add_zone(zone)
-        self.type_fig_map[plot_type, None] = fig
+        else:
+            self.type_fig_map[plot_type, None] = fig
         return self
 
     def add_zone(self, zone: AbstractZone) -> "PlotGroupBuilder":

@@ -130,6 +130,7 @@ class ZoneHMapPlot(AbstractHMapPlot[np.ndarray]):
         super().__init__(fig, x, y)
         self.zone = zone
 
+    @cache
     def _get_axes(self) -> plt.Axes:
         return self.fig.add_subplot(111)
 

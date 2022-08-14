@@ -57,7 +57,7 @@ class V3Dataset(CachedDataset):
 
     def __init__(self, desc: DatasetDescription):
         self.desc = desc
-        self.data_dir = desc.root / 'data'
+        self.data_dir = desc.root / (desc.attrs['data_dir'] if 'data_dir' in desc.attrs else 'data')
         self.cached_dir = desc.root / 'cache'
 
     def get_description(self) -> DatasetDescription:
@@ -108,7 +108,7 @@ class V3Dataset(CachedDataset):
                 if isinstance(t, structures.vital_signs_type):
                     compound_data['vitalsigns'] = t
             with warnings.catch_warnings():
-                warnings.simplefilter("ignore", ResourceWarning)
+                warnings.simplefilter("ignore", RuntimeWarning)
                 # noinspection PyTypeChecker
                 compound_data_list.append(np.array(self.compound_type(**compound_data)))
 
