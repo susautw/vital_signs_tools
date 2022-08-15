@@ -109,7 +109,7 @@ def combine_images(
         raise ValueError("invalid images: length should equal to product of shape")
     h, w = images[0].shape[:2]
     image_size = np.array([w, h])
-    wc, hc = shape
+    hc, wc = shape
     combined_shape = [h * hc, w * wc]
     if n_channels > 1:
         combined_shape.append(n_channels)
