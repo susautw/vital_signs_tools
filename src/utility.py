@@ -107,7 +107,7 @@ def combine_images(
     idx_length = np.asarray(shape).prod()
     if len(images) != idx_length:
         raise ValueError("invalid images: length should equal to product of shape")
-    w, h = images[0].shape[:2]
+    h, w = images[0].shape[:2]
     image_size = np.array([w, h])
     wc, hc = shape
     combined_shape = [h * hc, w * wc]

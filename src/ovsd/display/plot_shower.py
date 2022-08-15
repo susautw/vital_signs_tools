@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 from . import IPlotDisplayer
 from .. import MMWInfo
 from ..plot import IPlot
-from ..plot_configurator import PlotConfiguratorPipeline
+from ..plot_configurator import AbstractPlotConfigurator
 
 
 class PlotShower(IPlotDisplayer):
@@ -18,14 +18,14 @@ class PlotShower(IPlotDisplayer):
             base_fig: plt.Figure,
             source_it: Iterator[MMWInfo],
             plot: IPlot,
-            configurator_pipeline: PlotConfiguratorPipeline,
+            configurator: AbstractPlotConfigurator,
             delay: float,
             mute: bool = False
     ):
         self.base_fig = base_fig
         self.source_it = source_it
         self.plot = plot
-        self.configurator_pipeline = configurator_pipeline
+        self.configurator = configurator
         self.delay = delay
         self.mute = mute
 
@@ -43,7 +43,11 @@ class PlotShower(IPlotDisplayer):
             for info in self.source_it:
                 if self._finalized:
                     break
-                self.configurator_pipeline.execute(self.plot, info)
+
+                self.configurator.set_mmw_info(info)
+                self.plot.accept(self.configurator)
+                self.configurator.reset()
+
                 self.plot.draw()
                 canvas.blit(self.base_fig.bbox)
                 canvas.flush_events()

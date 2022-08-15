@@ -130,6 +130,7 @@ class V3Dataset(CachedDataset):
             mmw_infos_source = np.array(fp['mmw_infos'])
             for mmw_info_source in mmw_infos_source:
                 yield MMWInfo(
+                    header=tlv.FrameHeader.from_buffer_copy(mmw_info_source['header']),
                     zone_infos=dict(zip(zones, vs_type.from_buffer(mmw_info_source['vitalsigns']))),
                     zone_decisions=dict(zip(zones, mmw_info_source['decision'])),
                     hmap=mmw_info_source['heatmap']
