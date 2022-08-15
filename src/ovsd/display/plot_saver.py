@@ -1,5 +1,6 @@
 import logging
 import sys
+from abc import ABC
 from pathlib import Path
 from typing import Iterator, Optional
 
@@ -22,30 +23,25 @@ logger.setLevel(logging.WARNING)
 logger.addHandler(logging.StreamHandler(sys.stderr))
 
 
-class PlotSaver(IPlotDisplayer):
+class AbstractPlotSaver(IPlotDisplayer, ABC):
+    source_it: Iterator[MMWInfo] = None
+    out_dir: Path = None  # what dir to save the plots. the dir must exist
 
     def __init__(
             self,
             base_figs: list[plt.Figure],
-            source_it: Iterator[MMWInfo],
             plot: plots.PlotGroup,
             frame_configurator: AbstractPlotConfigurator,
             update_configurator: AbstractPlotConfigurator,
-            out_dir: Path,  # what dir to save the plots. the dir must exist
-            skip: int = 0
+            skip: int = 0,
+            max_saves: int = None
     ):
         self.base_figs = base_figs
-        self.source_it = source_it
         self.plot = plot
         self.frame_configurator = frame_configurator
         self.update_configurator = update_configurator
         self.skip = skip
-
-        if not out_dir.is_dir():
-            if out_dir.is_file():
-                raise NotADirectoryError(out_dir)
-            raise FileNotFoundError(out_dir)
-        self.out_dir = out_dir
+        self.max_saves = max_saves
 
         self._axes_configurator = _PlotAxesConfigurator()
         self._image_getter = PlotImageGetter()
@@ -61,17 +57,37 @@ class PlotSaver(IPlotDisplayer):
         for f in self.base_figs:
             f.canvas.draw()
 
+    def set_context(self, source_it: Iterator[MMWInfo], out_dir: Path):
+        self.source_it = source_it
+        self.out_dir = out_dir
+        if not out_dir.is_dir():
+            if out_dir.is_file():
+                raise NotADirectoryError(out_dir)
+            raise FileNotFoundError(out_dir)
+        self.frame_configurator.reset()
+        self.update_configurator.reset()
+
     def display(self) -> None:
+        if self.source_it is None or self.out_dir is None:
+            raise RuntimeError('set_context before display')
+
+
+class PlotSaver(AbstractPlotSaver):
+
+    def display(self) -> None:
+        super().display()
+        saves = 0
         for i, info in enumerate(self.source_it):
             self.frame_configurator.set_mmw_info(info)
             self.plot.accept(self.frame_configurator)
-            self.frame_configurator.reset()
+            self.frame_configurator.reset_after_operation()
+
             if i < self.skip:
                 continue
 
             self.update_configurator.set_mmw_info(info)
             self.plot.accept(self.update_configurator)
-            self.update_configurator.reset()
+            self.update_configurator.reset_after_operation()
 
             self.plot.draw()
             for f in self.base_figs:
@@ -90,55 +106,33 @@ class PlotSaver(IPlotDisplayer):
                     out_path = (self.out_dir / self.out_dir.stem)
                     out_path = out_path.with_stem(f'{out_path.stem}_{name}_{fn}').with_suffix('.png')
                     cv2.imwrite(str(out_path), img)
+            saves += 1
+            if self.max_saves is not None and saves >= self.max_saves:
+                return
 
 
-class PlotCombinedSaver(IPlotDisplayer):
+class PlotCombinedSaver(AbstractPlotSaver):
 
     def __init__(
             self,
             base_figs: list[plt.Figure],
-            source_it: Iterator[MMWInfo],
             plot: plots.PlotGroup,
             frame_configurator: AbstractPlotConfigurator,
             update_configurator: AbstractPlotConfigurator,
-            out_dir: Path,  # what dir to save the plots. the dir must exist
             search_range: int,
             out_shape: tuple[int, int],
             aligned: bool = True,
-            skip: int = 0
+            skip: int = 0,
+            max_saves: int = None
     ):
-        self.base_figs = base_figs
-        self.source_it = source_it
-        self.plot = plot
-        self.frame_configurator = frame_configurator
-        self.update_configurator = update_configurator
-        self.skip = skip
         self.search_range = search_range
         self.out_shape = out_shape
         self._out_length = int(np.prod(out_shape))
         self.aligned = aligned
-
-        if not out_dir.is_dir():
-            if out_dir.is_file():
-                raise NotADirectoryError(out_dir)
-            raise FileNotFoundError(out_dir)
-        self.out_dir = out_dir
-
-        self._axes_configurator = _PlotAxesConfigurator()
-        self._image_getter = PlotImageGetter()
-        self._plot_name_getter = PlotNameGetter()
-
-        self.plot.accept(self._axes_configurator)
-        self.plot_name_pairs = []
-
-        for p in self.plot.get_plots():
-            p.accept(self._plot_name_getter)
-            self.plot_name_pairs.append((self._plot_name_getter.get_result(), p))
-
-        for f in self.base_figs:
-            f.canvas.draw()
+        super().__init__(base_figs, plot, frame_configurator, update_configurator, skip, max_saves)
 
     def display(self) -> None:
+        super().display()
         source_it = self.source_it
         if self.aligned:
             source_it = get_peak_aligned_mmw_info_iter(
@@ -148,13 +142,14 @@ class PlotCombinedSaver(IPlotDisplayer):
                 self.skip,
                 self.update_frame_configurator
             )
+        saves = 0
         for i, infos in enumerate(pack(source_it, self._out_length)):
             name_imgs_map = {}
             img_skipped = False
             for info in infos:
                 self.update_configurator.set_mmw_info(info)
                 self.plot.accept(self.update_configurator)
-                self.update_configurator.reset()
+                self.update_configurator.reset_after_operation()
 
                 self.plot.draw()
                 for f in self.base_figs:
@@ -179,11 +174,14 @@ class PlotCombinedSaver(IPlotDisplayer):
                 out_path = (self.out_dir / self.out_dir.stem)
                 out_path = out_path.with_stem(f'{out_path.stem}_{name}_combined_{i}').with_suffix('.png')
                 cv2.imwrite(str(out_path), combine_images(self.out_shape, imgs, 3))
+            saves += 1
+            if self.max_saves is not None and saves >= self.max_saves:
+                return
 
     def update_frame_configurator(self, info):
         self.frame_configurator.set_mmw_info(info)
         self.plot.accept(self.frame_configurator)
-        self.frame_configurator.reset()
+        self.frame_configurator.reset_after_operation()
 
 
 class PlotImageGetter(IPlotVisitor):

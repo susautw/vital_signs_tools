@@ -28,8 +28,12 @@ class PlotConfiguratorPipeline(AbstractPlotConfigurator):
             plot.accept(c)
         self._executed = True
 
-    def reset(self) -> None:
+    def reset_after_operation(self) -> None:
         self._executed = False
+        for c in self._configurators:
+            c.reset_after_operation()
+
+    def reset(self) -> None:
         for c in self._configurators:
             c.reset()
 

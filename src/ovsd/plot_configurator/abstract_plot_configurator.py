@@ -1,4 +1,4 @@
-from abc import ABC, abstractmethod
+from abc import ABC
 from typing import Optional
 
 from .. import MMWInfo
@@ -37,5 +37,8 @@ class AbstractPlotConfigurator(IPlotVisitor, ABC):
     def set_mmw_info(self, info: MMWInfo):
         self._mmw_info = info
 
-    @abstractmethod
-    def reset(self) -> None: ...
+    def reset_after_operation(self) -> None:
+        self._mmw_info = None
+
+    def reset(self) -> None:
+        pass

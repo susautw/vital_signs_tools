@@ -72,7 +72,7 @@ def main(args_=None):
 
 def get_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
-    parser.add_argument("source", type=Path, help="path to source file (should be placed in a dataset)")
+    parser.add_argument("source", type=Path, help="path to source file (should include in a dataset)")
     parser.add_argument("config", type=Path, help="path to config file")
     parser.add_argument("-r", "--show-rect", help="show rectangle around zones", action="store_true")
     parser.add_argument('-z', '--zone', type=float, nargs=4, action="append")

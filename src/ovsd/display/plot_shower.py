@@ -46,7 +46,7 @@ class PlotShower(IPlotDisplayer):
 
                 self.configurator.set_mmw_info(info)
                 self.plot.accept(self.configurator)
-                self.configurator.reset()
+                self.configurator.reset_after_operation()
 
                 self.plot.draw()
                 canvas.blit(self.base_fig.bbox)
