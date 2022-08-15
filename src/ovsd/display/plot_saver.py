@@ -104,6 +104,7 @@ class PlotCombinedSaver(IPlotDisplayer):
             out_dir: Path,  # what dir to save the plots. the dir must exist
             search_range: int,
             out_shape: tuple[int, int],
+            aligned: bool = True,
             skip: int = 0
     ):
         self.base_figs = base_figs
@@ -115,6 +116,7 @@ class PlotCombinedSaver(IPlotDisplayer):
         self.search_range = search_range
         self.out_shape = out_shape
         self._out_length = int(np.prod(out_shape))
+        self.aligned = aligned
 
         if not out_dir.is_dir():
             if out_dir.is_file():
@@ -137,13 +139,16 @@ class PlotCombinedSaver(IPlotDisplayer):
             f.canvas.draw()
 
     def display(self) -> None:
-        for i, infos in enumerate(pack(get_peak_aligned_mmw_info_iter(
+        source_it = self.source_it
+        if self.aligned:
+            source_it = get_peak_aligned_mmw_info_iter(
                 self.source_it,
                 self.search_range,
                 self._out_length,
                 self.skip,
                 self.update_frame_configurator
-        ), self._out_length)):
+            )
+        for i, infos in enumerate(pack(source_it, self._out_length)):
             name_imgs_map = {}
             img_skipped = False
             for info in infos:
