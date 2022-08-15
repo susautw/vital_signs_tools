@@ -16,7 +16,10 @@ class HMapCLimUpdater(AbstractPlotConfigurator):
 
     def set_mmw_info(self, info: MMWInfo):
         super().set_mmw_info(info)
-        self.rolling_average.next(np.max(info.get_full_map()))
+        self.rolling_average.next(np.max(info.get_full_hmap()))
 
     def visit_abstract_hmap_plot(self, plot: plots.AbstractHMapPlot):
         plot.set_clim(0, self.rolling_average.current())
+
+    def reset(self) -> None:
+        self.rolling_average.reset()

@@ -7,11 +7,12 @@ import numpy as np
 
 from config_loader import MMWaveConfigLoader
 from utility import structure_to_dict
-from occupancy_and_vital_signs_detection.main import Config, get_parser
+from ovsd.configs import OVSDConfig
+from ovsd.structures import get_parser
 
 from tlv import from_stream, TLVFrame
 
-config: Config
+config: OVSDConfig
 args: argparse.Namespace
 
 
@@ -24,7 +25,7 @@ def packet_to_h5(_args: Sequence[str] = None):
     args = get_arg_parser().parse_args(_args)
     source: Path = args.source
     with args.config.open() as fp:
-        config = Config(MMWaveConfigLoader(fp.readlines()))
+        config = OVSDConfig(MMWaveConfigLoader(fp.readlines()))
     args.output.mkdir(parents=True, exist_ok=True)
 
     parser = get_parser(config)
@@ -50,7 +51,7 @@ class FrameAcceptor:
         self.zone_heatmaps = {}
 
     def accept(self, frame: TLVFrame):
-        from occupancy_and_vital_signs_detection.main import heatmap_type
+        from ovsd.structures import heatmap_type
         metadata = self.metadata_group.create_dataset(
             f"{frame.frame_header.frame_number}",
             shape=()

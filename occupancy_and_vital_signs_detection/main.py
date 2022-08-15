@@ -1,5 +1,4 @@
 import argparse
-import ctypes
 import logging
 import sys
 from datetime import datetime
@@ -7,7 +6,7 @@ from io import BytesIO
 from pathlib import Path
 from queue import Queue, Empty
 from threading import Thread
-from typing import Type, Union, IO, Optional, Sequence, Any
+from typing import IO, Optional, Sequence, Any
 
 import serial
 from fancy import config as cfg
@@ -17,21 +16,20 @@ from matplotlib.collections import QuadMesh
 from matplotlib.patches import Rectangle
 import matplotlib as mpl
 
-import structures
-from config_loader import SequentialLoader, MMWaveConfigLoader
-from occupancy_and_vital_signs_detection.core.plot import AbstractZone
+from config_loader import MMWaveConfigLoader
+from ovsd.configs import OVSDConfig
+from ovsd import structures
 from occupancy_and_vital_signs_detection.plots import HeatmapPlotter
-from sdk_configs import ChannelConfig, FrameConfig, ProfileConfig, ChirpConfig
-from tlv import from_stream, TLVFrameParser, TLVFrame
+from tlv import from_stream, TLVFrame
 from utility import RollingAverage
 
 args: "ArgConfig"
-config: "Config"
+config: "OVSDConfig"
 visualizer: "Visualizer"
 
-heatmap_type: Type[ctypes.Array[ctypes.Array[Union[ctypes.c_uint8, ctypes.c_uint16, ctypes.c_float]]]]
-decision_type: Type[ctypes.Array[ctypes.c_bool]]
-vital_signs_type: Type[ctypes.Array[structures.VitalSignsVectorTLV]]
+logger = logging.getLogger("root")
+logger.setLevel(logging.INFO)
+logger.addHandler(logging.StreamHandler(sys.stdout))
 
 mpl.rcParams['font.family'] = ['Microsoft YaHei', 'sans-serif']
 QUEUE_WARNING_RATIO = 0.8
@@ -39,7 +37,7 @@ finalized = False
 
 
 def main():
-    global args, heatmap_type, decision_type, vital_signs_type, visualizer
+    global args, visualizer
 
     args = ArgConfig(cfg.DictConfigLoader(vars(get_arg_parser().parse_args())))
 
@@ -55,7 +53,7 @@ def main():
     load_and_send_config(args.config, cli_port)
     logger.info(f"config has loaded.")
 
-    tlv_frame_parser = get_parser(config)
+    tlv_frame_parser = structures.get_parser(config)
     delay = config.frame_cfg.frame_periodicity_in_ms / 1000 if args.mode == "file" else None
 
     queue = Queue(maxsize=args.queue_size)
@@ -90,19 +88,6 @@ def main():
     logger.info("Done.")
 
 
-def get_parser(config_: "Config"):
-    global heatmap_type, decision_type, vital_signs_type
-    tlv_frame_parser = TLVFrameParser()
-    tlv_frame_parser.register_type(8, heatmap_type := structures.range_azimuth_heatmap_tlv(
-        config_.num_range_bins, config_.num_angle_bins, config_.gui_monitor.heatmap_dtype
-    ))
-    tlv_frame_parser.register_type(9, decision_type := structures.decision_vector_tlv(config_.zone_def.number_of_zones))
-    tlv_frame_parser.register_type(
-        10, vital_signs_type := structures.vital_signs_vector_tlv(config_.zone_def.number_of_zones)
-    )
-    return tlv_frame_parser
-
-
 def read_packet_to_queue(data_stream, tlv_frame_parser, delay, q: Queue):
     skip = 0
     with args.binary_packet_file:
@@ -126,13 +111,13 @@ def accept_frame(frame: TLVFrame, skip: bool):
     if skip:
         return
     for tlv in frame:
-        if isinstance(tlv, heatmap_type):
+        if isinstance(tlv, structures.heatmap_type):
             logger.debug("updating heatmap")
             visualizer.set_heatmap(tlv)
-        elif isinstance(tlv, decision_type):
+        elif isinstance(tlv, structures.decision_type):
             logger.debug(f"updating decision")
             visualizer.set_decision(tlv)
-        elif isinstance(tlv, vital_signs_type):
+        elif isinstance(tlv, structures.vital_signs_type):
             logger.debug(f"updating vital_signs")
             visualizer.set_vital_signs(tlv)
     visualizer.update()
@@ -160,8 +145,8 @@ class Visualizer:
     max_signal_len: int
     num_zones: int
 
-    decision: "decision_type" = None
-    vital_signs: "vital_signs_type" = None
+    decision: "structures.decision_type" = None
+    vital_signs: "structures.vital_signs_type" = None
     heatmap: np.ndarray = None
 
     plot_names = ["heart_rate", "heart_waveform", "breathing_rate", "breathing_waveform"]
@@ -256,13 +241,13 @@ class Visualizer:
     def close(self):
         self.fig.canvas.close_event()
 
-    def set_decision(self, decision: "decision_type") -> None:
+    def set_decision(self, decision: "structures.decision_type") -> None:
         self.decision = decision
 
-    def set_vital_signs(self, vital_signs: "vital_signs_type") -> None:
+    def set_vital_signs(self, vital_signs: "structures.vital_signs_type") -> None:
         self.vital_signs = vital_signs
 
-    def set_heatmap(self, heatmap: "heatmap_type") -> None:
+    def set_heatmap(self, heatmap: "structures.heatmap_type") -> None:
         self.heatmap = np.asarray(heatmap)
 
     def update(self):
@@ -363,7 +348,7 @@ def load_and_send_config(config_file: Path, cli_port: Optional[serial.Serial]):
     logger.info("Sending config...")
     with config_file.open() as fp:
         lines: list[str] = list(fp.readlines())
-        config = Config(MMWaveConfigLoader(lines))
+        config = OVSDConfig(MMWaveConfigLoader(lines))
         if cli_port is None:
             return
 
@@ -384,89 +369,6 @@ def load_and_send_config(config_file: Path, cli_port: Optional[serial.Serial]):
                 if b'Error' in response:
                     exit(1)
     return config
-
-
-class GUIConfig(cfg.BaseConfig):
-    decision: bool = cfg.Option(type=bool)
-    heatmap: int = cfg.Option(type=int)
-    vital_signs: bool = cfg.Option(type=bool)
-
-    heatmap_dtype: Type = cfg.PlaceHolder()
-
-    heatmap_dtype_map = {
-        8: ctypes.c_uint8,
-        16: ctypes.c_uint16,
-        32: ctypes.c_float
-    }
-
-    def post_load(self):
-        self.heatmap_dtype = self.heatmap_dtype_map[self.heatmap]
-
-
-class Zone(cfg.BaseConfig, AbstractZone):
-    range_start: int = cfg.Option(type=int)
-    range_length: int = cfg.Option(type=int)
-    azimuth_start: int = cfg.Option(type=int)
-    azimuth_length: int = cfg.Option(type=int)
-
-
-class ZoneDef(cfg.BaseConfig):
-    number_of_zones: int = cfg.Option(type=int)
-    _zone_defs: list[int] = cfg.Option(name="zone_defs", type=[int])
-
-    zones: list[Zone] = cfg.PlaceHolder()
-    geo_sorted_ids: list[int] = cfg.PlaceHolder()
-
-    def post_load(self):
-        self.zones = []
-        for i in range(self.number_of_zones):
-            loader = SequentialLoader(self._zone_defs[i * 4: i * 4 + 4])
-            self.zones.append(Zone(loader))
-        geo_sorted_pair = sorted(enumerate(self.zones), key=lambda x: x[1].order(), reverse=True)
-        self.geo_sorted_ids = [0] * len(geo_sorted_pair)
-        for geo_sorted_idx, (idx, zone) in enumerate(geo_sorted_pair):
-            self.geo_sorted_ids[idx] = geo_sorted_idx
-
-
-class Config(cfg.BaseConfig):
-    channel_cfg: ChannelConfig = cfg.Option(type=ChannelConfig)
-    profile_cfg: ProfileConfig = cfg.Option(type=ProfileConfig)
-    chirp_cfg: list[ChirpConfig] = cfg.Option(type=[ChirpConfig])
-    frame_cfg: FrameConfig = cfg.Option(type=FrameConfig)
-    gui_monitor: GUIConfig = cfg.Option(type=GUIConfig)
-    zone_def: ZoneDef = cfg.Option(type=ZoneDef)
-
-    num_chirps_per_frame: int = cfg.PlaceHolder()
-    num_doppler_bins: int = cfg.PlaceHolder()
-    num_range_bins: int = cfg.PlaceHolder()
-    num_angle_bins: int = cfg.Lazy(lambda c: 48)
-    range_resolution_meters: float = cfg.PlaceHolder()
-    range_idx_to_meter: float = cfg.PlaceHolder()
-    doppler_resolution_mps: float = cfg.PlaceHolder()
-
-    def post_load(self):
-        self.load_lazies()
-        self.num_chirps_per_frame = (self.frame_cfg.chirp_end_index
-                                     - self.frame_cfg.chirp_start_index + 1) * self.frame_cfg.number_of_loops
-
-        self.num_doppler_bins = self.num_chirps_per_frame // self.channel_cfg.num_tx_ant
-        self.num_range_bins = self._power_2_roundup(self.profile_cfg.num_adc_samples)
-        self.range_resolution_meters = 3e8 * self.profile_cfg.dig_out_sample_rate * 1e3 / (
-                2 * self.profile_cfg.freq_slope_const * 1e12 * self.profile_cfg.num_adc_samples
-        )
-        self.range_idx_to_meter = 3e8 * self.profile_cfg.dig_out_sample_rate * 1e3 / (
-                2 * self.profile_cfg.freq_slope_const * 1e12 * self.num_range_bins
-        )
-        self.doppler_resolution_mps = 3e8 / (2 * self.profile_cfg.start_freq * 1e9 * (
-                self.profile_cfg.idle_time + self.profile_cfg.ramp_end_time
-        ) * 1e-6 * self.num_doppler_bins * self.channel_cfg.num_tx_ant)
-
-    @staticmethod
-    def _power_2_roundup(x: int) -> int:
-        y = 1
-        while y < x:
-            y *= 2
-        return y
 
 
 class ArgConfig(cfg.BaseConfig):
@@ -516,7 +418,4 @@ def get_arg_parser() -> argparse.ArgumentParser:
 
 
 if __name__ == '__main__':
-    logger = logging.getLogger("root")
-    logger.setLevel(logging.INFO)
-    logger.addHandler(logging.StreamHandler(sys.stdout))
     exit(main())

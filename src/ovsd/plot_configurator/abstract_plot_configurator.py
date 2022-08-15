@@ -36,3 +36,9 @@ class AbstractPlotConfigurator(IPlotVisitor, ABC):
 
     def set_mmw_info(self, info: MMWInfo):
         self._mmw_info = info
+
+    def reset_after_operation(self) -> None:
+        self._mmw_info = None
+
+    def reset(self) -> None:
+        pass

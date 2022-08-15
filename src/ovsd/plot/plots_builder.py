@@ -5,7 +5,7 @@ import numpy as np
 from matplotlib.figure import FigureBase
 
 from . import AbstractZone, plots
-from ...main import Config
+from ovsd.configs import OVSDConfig
 
 
 class PlotType(IntEnum):
@@ -26,7 +26,7 @@ class PlotGroupBuilder:
         self.type_fig_map = {}
         self.zones = []
 
-    def with_config(self, config: Config) -> "PlotGroupBuilder":
+    def with_config(self, config: OVSDConfig) -> "PlotGroupBuilder":
         azm_space_deg = np.linspace(-60, 60, config.num_angle_bins)
         rad_space = np.linspace(0, 3, config.num_range_bins)
         self.x_axis, self.y_axis = np.meshgrid(np.deg2rad(azm_space_deg), rad_space)
@@ -40,7 +40,8 @@ class PlotGroupBuilder:
                 raise ValueError("Zone plot types must specify a zone")
             self.type_fig_map[plot_type, zone] = fig
             self.add_zone(zone)
-        self.type_fig_map[plot_type, None] = fig
+        else:
+            self.type_fig_map[plot_type, None] = fig
         return self
 
     def add_zone(self, zone: AbstractZone) -> "PlotGroupBuilder":

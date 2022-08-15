@@ -2,5 +2,5 @@ numpy~=1.23.1
 matplotlib~=3.5.1
 pyserial~=3.5
 h5py~=3.6.0
-fancy-config~=0.10.0
+fancy-config~=0.12.0
 opencv-contrib-python~=4.6.0.66

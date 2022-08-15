@@ -8,4 +8,7 @@ class PlotUpdater(AbstractPlotConfigurator):
 
     def visit_abstract_full_hmap_plot(self, plot: plots.AbstractFullHMapPlot):
         info = self.get_mmw_info()
-        plot.set_data((info.get_full_map(), {z: info.get_zone_decision(z) for z in plot.rect_zones}))
+        plot.set_data((info.get_full_hmap(), {z: info.get_zone_decision(z) for z in plot.rect_zones}))
+
+    def reset(self) -> None: ...
+

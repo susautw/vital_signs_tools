@@ -8,7 +8,7 @@ from config_loader import MMWaveConfigLoader
 from datasets.ds3 import modify_path_stem
 from exposes import HFInitHook
 from occupancy_and_vital_signs_detection.h5_to_image import MapType, h5_to_images, TYPE_NAME_SUFFIX_MAP, MapSourceType
-from occupancy_and_vital_signs_detection.main import Config
+from ovsd.configs import OVSDConfig
 from utility import combine_images
 
 BASE_DIR = Path(__file__).parent
@@ -30,7 +30,7 @@ def main():
     """
     Combine 20 figures into a 5x4 grids in an image
     """
-    config = Config(MMWaveConfigLoader((BASE_DIR / 'vod_vs_68xx_10fps_center.cfg').read_text().split("\n")))
+    config = OVSDConfig(MMWaveConfigLoader((BASE_DIR / 'vod_vs_68xx_10fps_center.cfg').read_text().split("\n")))
     h5_paths = sorted(SOURCE_BASE_DIR.glob("**/*.h5"))
     for path in h5_paths:
         print(path)
@@ -40,7 +40,7 @@ def main():
     print("Done!")
 
 
-def process_one(path: Path, config: Config, fp: h5py.File, remove_noise: bool) -> None:
+def process_one(path: Path, config: OVSDConfig, fp: h5py.File, remove_noise: bool) -> None:
     combined_images = {}
     fragments = {}
     full_heatmaps = np.asarray(fp[MapSourceType.Full.value][SKIP: SKIP + LENGTH])
@@ -54,7 +54,7 @@ def process_one(path: Path, config: Config, fp: h5py.File, remove_noise: bool) -
     )):
         if i >= LENGTH:
             combined_images = {
-                typ: combine_images(hook.size[typ], SHAPE, fragment_images, 3)
+                typ: combine_images(SHAPE, fragment_images, 3)
                 for typ, fragment_images in fragments.items()
             }
             break
