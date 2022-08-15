@@ -6,6 +6,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 
 from config_loader import MMWaveConfigLoader
+from ovsd import rolling_average_factory
 from ovsd.dataset import V3Dataset, DatasetDescription
 from ovsd.display import PlotShower
 from ovsd.plot import Zone
@@ -13,7 +14,6 @@ from ovsd.plot.plots_builder import PlotGroupBuilder, PlotType
 from ovsd.plot_configurator import PlotConfiguratorPipeline
 from ovsd.plot_configurator.hmap_clim_updater import HMapCLimUpdater
 from ovsd.plot_configurator.plot_updater import PlotUpdater
-from occupancy_and_vital_signs_detection.h5_to_image import rolling_average_factory
 from ovsd.configs import OVSDConfig
 from ovsd.structures import init_structures
 

@@ -7,13 +7,13 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm
 
 from config_loader import MMWaveConfigLoader
+from ovsd import rolling_average_factory
 from ovsd.dataset import V3Dataset, DatasetDescription
 from ovsd.display import AbstractPlotSaver, PlotSaver, PlotCombinedSaver
 from ovsd.plot import Zone
 from ovsd.plot.plots_builder import PlotGroupBuilder, PlotType
 from ovsd.plot_configurator.hmap_clim_updater import HMapCLimUpdater
 from ovsd.plot_configurator.plot_updater import PlotUpdater
-from occupancy_and_vital_signs_detection.h5_to_image import rolling_average_factory
 from ovsd.configs import OVSDConfig
 from ovsd.structures import init_structures
 
@@ -104,7 +104,7 @@ def get_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
     parser.add_argument("source", type=Path, help="path to source file or directory (should include in a dataset)")
     parser.add_argument("config", type=Path, help="path to config file")
-    parser.add_argument("-o", "--out-dir", type=Path, help="path to the output directory")
+    parser.add_argument("-o", "--out-dir", type=Path, required=True, help="path to the output directory")
     parser.add_argument('-z', '--zone', type=float, nargs=4, action="append")
     parser.add_argument('-f', '--full', dest="plot_types", action="append_const", const="f")
     parser.add_argument('-p', '--polar-full', dest="plot_types", action="append_const", const="p")

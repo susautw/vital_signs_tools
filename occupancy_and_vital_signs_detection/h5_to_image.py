@@ -12,6 +12,7 @@ from matplotlib import pyplot as plt
 from matplotlib.collections import QuadMesh
 
 from config_loader import MMWaveConfigLoader
+from ovsd import rolling_average_factory
 from ovsd.configs import OVSDConfig
 from occupancy_and_vital_signs_detection.plots import HeatmapPlotter
 from utility import RollingAverage, convert_artist_to_image
@@ -135,10 +136,6 @@ def h5_to_images(
                 typ: convert_artist_to_image(fig_collection.figure, draw=True)
                 for typ, fig_collection in fig_collections.items()
             }
-
-
-def rolling_average_factory():
-    return RollingAverage(window_size=4, low=1000, init=0)
 
 
 def get_map_types_and_sources(map_typ: int) -> tuple[set[MapType], set[MapSourceType]]:
