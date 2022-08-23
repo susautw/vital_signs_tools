@@ -29,7 +29,8 @@ class PlotGroupBuilder:
     def with_config(self, config: OVSDConfig) -> "PlotGroupBuilder":
         azm_space_deg = np.linspace(-60, 60, config.num_angle_bins)
         rad_space = np.linspace(0, 3, config.num_range_bins)
-        self.x_axis, self.y_axis = np.meshgrid(np.deg2rad(azm_space_deg), rad_space)
+
+        self.x_axis, self.y_axis = np.meshgrid(azm_space_deg, rad_space)
         return self
 
     def add_plot_type(self, plot_type: PlotType, fig: FigureBase, zone: AbstractZone = None) -> "PlotGroupBuilder":
@@ -67,7 +68,7 @@ class PlotGroupBuilder:
                 )
             elif plot_type == PlotType.POLAR_HMAP:
                 plot = plots.PolarHMapPlot(
-                    fig, self.x_axis, self.y_axis, rect_zones=self.zones if self.show_rect_in_hmap else []
+                    fig, np.deg2rad(self.x_axis), self.y_axis, rect_zones=self.zones if self.show_rect_in_hmap else []
                 )
             else:
                 raise RuntimeError("This statement is never executed.")

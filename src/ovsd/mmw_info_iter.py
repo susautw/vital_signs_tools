@@ -1,8 +1,9 @@
-from typing import Iterator, Callable
+import enum
+from typing import Iterator, Callable, Optional
 
 import numpy as np
 
-from . import MMWInfo
+from . import MMWInfo, logger
 
 
 class HMapOnlyMMWInfoIterator(Iterator[MMWInfo]):
@@ -61,3 +62,78 @@ def get_peak_aligned_mmw_info_iter(
                 remaining_length = out_length - (search_len - max_idx)
                 search_len = 0
                 infos = []
+
+
+class InvalidFrameHandler(Iterator[MMWInfo]):
+    _inner_iterator = None
+
+    class Strategy(enum.Enum):
+        IGNORE = "ignore"
+        INTERPOLATION = "interpolation"
+        SUBTRACT_FROM_65535 = "subtract"
+
+    def __init__(self, info_iter: Iterator[MMWInfo], strategy: Strategy):
+        if strategy is self.Strategy.IGNORE:
+            self._inner_iterator = self._ignore_invalid_frames(info_iter)
+        elif strategy is self.Strategy.INTERPOLATION:
+            self._inner_iterator = self._interpolation_invalid_frames(info_iter)
+        elif strategy is self.Strategy.SUBTRACT_FROM_65535:
+            self._inner_iterator = self.subtract_from_65535(info_iter)
+
+    def __next__(self) -> MMWInfo:
+        return next(self._inner_iterator)
+
+    def _ignore_invalid_frames(self, info_iter: Iterator[MMWInfo]) -> Iterator[MMWInfo]:
+        for info in info_iter:
+            if self._is_invalid_frame(info):
+                logger.debug(f"ignored frame {info.get_header().frame_number}")
+            else:
+                yield info
+
+    def _interpolation_invalid_frames(self, info_iter: Iterator[MMWInfo]) -> Iterator[MMWInfo]:
+        first_valid = None
+        invalid_infos = []
+
+        for info in info_iter:
+            if self._is_invalid_frame(info):
+                invalid_infos.append(info)
+            else:
+                if invalid_infos:
+                    logger.debug(f"interpolate frames from {first_valid.get_header().frame_number} "
+                                 f"to {info.get_header().frame_number}")
+                    yield from self._interpolation(first_valid, last_valid=info, invalid_infos=invalid_infos)
+                    invalid_infos.clear()
+                first_valid = info
+                yield info
+
+    def _interpolation(
+            self,
+            first_valid: Optional[MMWInfo],
+            last_valid: MMWInfo,
+            invalid_infos: list[MMWInfo]
+    ) -> list[MMWInfo]:
+        if first_valid is None:  # no first valid frame found. ignore those frames.
+            return []
+        dtype = first_valid.get_full_hmap().dtype
+        hmap = np.float32(first_valid.get_full_hmap())
+        step = (np.float32(last_valid.get_full_hmap()) - hmap) / (len(invalid_infos) + 1)
+
+        results = []
+        for info in invalid_infos:
+            hmap += step
+            results.append(info.with_hmap(hmap.astype(dtype)))
+        return results
+
+    def subtract_from_65535(self, info_iter: Iterator[MMWInfo]) -> Iterator[MMWInfo]:
+        for info in info_iter:
+            if self._is_invalid_frame(info):
+                logger.debug(f"frame {info.get_header().frame_number} is subtract from 65535")
+                hmap = info.get_full_hmap().copy()
+                mask = hmap > 32000
+                hmap[mask] = 65535 - hmap[mask]
+                yield info.with_hmap(hmap)
+            else:
+                yield info
+
+    def _is_invalid_frame(self, info: MMWInfo) -> bool:
+        return np.any(info.get_full_hmap() > 32000)

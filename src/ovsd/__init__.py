@@ -1,3 +1,7 @@
+import logging
+
+logger = logging.getLogger("ovsd")
+
 from utility import RollingAverage
 from .mmw_info import MMWInfo
 

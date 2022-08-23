@@ -132,7 +132,10 @@ class ZoneHMapPlot(AbstractHMapPlot[np.ndarray]):
 
     @cache
     def get_axes(self) -> plt.Axes:
-        return self.fig.add_subplot(111)
+        ax: plt.Axes = self.fig.add_subplot(111)
+        ax.set_xlabel("Azimuth[degree]")
+        ax.set_ylabel("Range[m]")
+        return ax
 
     def set_data(self, data: np.ndarray) -> None:
         self.mesh.set_array(data)
@@ -148,8 +151,10 @@ class PolarHMapPlot(AbstractFullHMapPlot):
         ax: plt.PolarAxes = self.fig.add_subplot(111, polar=True)
         ax.set_theta_zero_location("N")
         ax.set_thetalim(*np.deg2rad([-60, 60]))
-        ax.set_xlabel("Azimuth")
-        ax.yaxis.set_label_text("Range", y=0.4, verticalalignment="center")
+        ax.xaxis.set_label_position("top")
+        ax.yaxis.set_label_position("right")
+        ax.set_xlabel("Azimuth[degree]", labelpad=-8)
+        ax.set_ylabel("Range[m]", ha="right", y=0.25, rotation=0)
         ax.grid(False)
         return ax
 
@@ -161,7 +166,10 @@ class PolarHMapPlot(AbstractFullHMapPlot):
 class FullHMapPlot(AbstractFullHMapPlot):
     @cache
     def get_axes(self) -> plt.Axes:
-        return self.fig.add_subplot(111)
+        ax: plt.Axes = self.fig.add_subplot(111)
+        ax.set_xlabel("Azimuth[degree]")
+        ax.set_ylabel("Range[m]")
+        return ax
 
     def accept(self, visitor: "IPlotVisitor"):
         super().accept(visitor)

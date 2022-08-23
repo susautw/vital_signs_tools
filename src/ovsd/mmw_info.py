@@ -49,3 +49,11 @@ class MMWInfo:
             zone_decisions=self.zone_decisions.copy(),
             hmap=self.hmap.copy()
         )
+
+    def with_hmap(self, hmap: np.ndarray) -> "MMWInfo":
+        return MMWInfo(
+            header=self.header,
+            zone_infos=self.zone_infos,
+            zone_decisions=self.zone_decisions,
+            hmap=hmap
+        )

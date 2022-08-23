@@ -18,7 +18,7 @@ def main():
 
 
 def get_arg_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("cmd", type=str, choices=cmds.keys())
     return parser
 
