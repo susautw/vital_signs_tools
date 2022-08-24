@@ -33,6 +33,7 @@ class PlotShower(IPlotDisplayer):
         self._finalized = False
         canvas = self.base_fig.canvas
         canvas.draw()
+        # TODO handle background
         original_handler = None
         if self.mute:
             original_handler = canvas.callbacks.exception_handler

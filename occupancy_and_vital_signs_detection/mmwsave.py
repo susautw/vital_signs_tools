@@ -94,10 +94,11 @@ def main(args_=None):
             aligned=not args.no_align
         )
 
-    invalid_frame_handler_strategy = (
-        NANE_STRATEGY_MAP[args.invalid_frame_handler]
-        if args.invalid_frame_handler else None
-    )
+    if args.invalid_frame_handler:
+        logger.info(f"Invalid frame handler enabled: {args.invalid_frame_handler}")
+        invalid_frame_handler_strategy = (NANE_STRATEGY_MAP[args.invalid_frame_handler])
+    else:
+        invalid_frame_handler_strategy = None
 
     progress = tqdm(sources)
     try:
