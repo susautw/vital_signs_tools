@@ -4,6 +4,8 @@ import sys
 from pathlib import Path
 
 import matplotlib.pyplot as plt
+from matplotlib.figure import SubFigure
+import PIL.Image
 
 from config_loader import MMWaveConfigLoader
 from ovsd import rolling_average_factory, logger as ovsd_logger
@@ -53,20 +55,30 @@ def main(args_=None):
     if len_plots == 0:
         raise RuntimeError("No Plot Types specified")
 
-    fig: plt.Figure = plt.figure(figsize=(4 * len_plots, 4))
+    fig: plt.Figure = plt.figure(figsize=(4 * len_plots, 5))
     fig.canvas.manager.set_window_title("Heart Radar")
-    gs = fig.add_gridspec(1, len_plots)
+    gs = fig.add_gridspec(2, len_plots, height_ratios=[0.8, 0.2])
+
+    footer: SubFigure = fig.add_subfigure(gs[1, :])
+    footer_gs = footer.add_gridspec(1, 2, width_ratios=[1, 1])
+    footer_left: plt.Axes = footer.add_subplot(footer_gs[0])
+    footer_left.imshow(PIL.Image.open("assets/footer_left.png"))
+    footer_left.set_axis_off()
+    footer_right: plt.Axes = footer.add_subplot(footer_gs[1])
+    footer_right.imshow(PIL.Image.open("assets/footer_right.png"))
+    footer_right.set_axis_off()
+
     plot_builder = (PlotGroupBuilder()
                     .with_config(config)
                     .set_show_rect_in_hmap(args.show_rect)
                     )
     for i, plot_type in enumerate(plot_types):
-        sub_fig: plt.Figure = fig.add_subfigure(gs[i])
+        sub_fig: plt.Figure = fig.add_subfigure(gs[0, i])
         sub_fig.suptitle(MAP_PLOT_TYPE_TO_FIG_TITLE[plot_type])
         plot_builder.add_plot_type(plot_type, sub_fig)
 
     for i, zone in enumerate(zones, start=len(plot_types)):
-        sub_fig = fig.add_subfigure(gs[i])
+        sub_fig = fig.add_subfigure(gs[0, i])
         sub_fig.suptitle('Cardiac Cycle Image')
         plot_builder.add_plot_type(PlotType.ZONE_HMAP, sub_fig, zone)
 
