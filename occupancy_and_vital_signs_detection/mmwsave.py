@@ -41,6 +41,9 @@ def main(args_=None):
     sources: list[Path]
     source_base_path: Path
     out_base_path: Path = args.out_dir
+
+    # TODO create new directory if out_base_path exist
+
     if args.source.is_file():
         sources = [args.source]
         source_base_path = args.source.parent

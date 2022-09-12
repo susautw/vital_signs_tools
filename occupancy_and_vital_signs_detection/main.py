@@ -20,7 +20,7 @@ from config_loader import MMWaveConfigLoader
 from ovsd.configs import OVSDConfig
 from ovsd import structures
 from occupancy_and_vital_signs_detection.plots import HeatmapPlotter
-from tlv import from_stream, TLVFrame
+from tlv import from_stream, TLVFrame, FrameHeader
 from utility import RollingAverage
 
 args: "ArgConfig"
@@ -110,6 +110,7 @@ def accept_frame(frame: TLVFrame, skip: bool):
         args.binary_packet_file.write(frame.raw_data)
     if skip:
         return
+    visualizer.set_frame_header(frame.frame_header)
     for tlv in frame:
         if isinstance(tlv, structures.heatmap_type):
             logger.debug("updating heatmap")
@@ -145,6 +146,7 @@ class Visualizer:
     max_signal_len: int
     num_zones: int
 
+    frame_header: FrameHeader = None
     decision: "structures.decision_type" = None
     vital_signs: "structures.vital_signs_type" = None
     heatmap: np.ndarray = None
@@ -154,6 +156,7 @@ class Visualizer:
     fig: plt.Figure
     fig_info: plt.Figure
     fig_heatmap: plt.Figure
+    fig_frame_info: plt.Figure
     plot_updaters: list["IPlotUpdater"]
 
     bg_cache: Any
@@ -162,7 +165,7 @@ class Visualizer:
         self.max_signal_len = max_signal_len
         self.num_zones = num_zones
         self.fig = plt.figure(figsize=(14, 8))
-        gs = self.fig.add_gridspec(2, 2, width_ratios=[3, 2], height_ratios=[0.05, 1])
+        gs = self.fig.add_gridspec(3, 2, width_ratios=[3, 2], height_ratios=[0.05, 1, 0.05])
 
         title_ax = self.fig.add_subfigure(gs[0, :]).add_subplot(111)
         title_ax.set_axis_off()
@@ -170,9 +173,12 @@ class Visualizer:
 
         self.fig_info = self.fig.add_subfigure(gs[1, 0])
         self.fig_heatmap = self.fig.add_subfigure(gs[1, 1])
+        self.fig_frame_info = self.fig.add_subfigure(gs[2, :])
+
         self.plot_updaters = []
         self._init_info_plots()
         self._init_heatmap()
+        self._init_frame_info()
 
         self.fig.canvas.draw()
         self.bg_cache = self.fig.canvas.copy_from_bbox(self.fig.bbox)
@@ -235,11 +241,21 @@ class Visualizer:
             default_vmax=1000
         ))
 
+    def _init_frame_info(self) -> None:
+        ax = self.fig_frame_info.add_subplot(111)
+        ax.set_axis_off()
+        text = ax.text(1, 0.5, "", fontsize=16, ha="right", va="center")
+        text.set_animated(True)
+        self.plot_updaters.append(FrameInfoUpdater(text))
+
     def start(self) -> None:
         self.fig.show()
 
     def close(self):
         self.fig.canvas.close_event()
+
+    def set_frame_header(self, frame_header: FrameHeader):
+        self.frame_header = frame_header
 
     def set_decision(self, decision: "structures.decision_type") -> None:
         self.decision = decision
@@ -268,6 +284,22 @@ class Visualizer:
 class IPlotUpdater:
     def update(self, context: Visualizer) -> Sequence[plt.Artist]:
         raise NotImplementedError()
+
+
+class FrameInfoUpdater(IPlotUpdater):
+    def __init__(self, text: plt.Text, time_format: str = None):
+        self.time_format = time_format
+        self.text = text
+
+    def update(self, context: Visualizer) -> Sequence[plt.Artist]:
+        now_time = datetime.now().time()
+        if self.time_format is None:
+            time_info = f"time={now_time.isoformat('milliseconds')}"
+        else:
+            time_info = now_time.strftime(self.time_format)
+        frame_info = f'frame_number={context.frame_header.frame_number}'
+        self.text.set_text(', '.join([time_info, frame_info]))
+        return self.text,
 
 
 class LinePlotUpdater(IPlotUpdater):
