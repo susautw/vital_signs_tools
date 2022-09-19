@@ -15,7 +15,7 @@ from ovsd.mmw_info_iter import InvalidFrameHandler
 from ovsd.plot import Zone
 from ovsd.plot.plots_builder import PlotGroupBuilder, PlotType
 from ovsd.plot_configurator import PlotConfiguratorPipeline
-from ovsd.plot_configurator.hmap_clim_updater import HMapCLimUpdater
+from ovsd.plot_configurator import hmap_clim_updater
 from ovsd.plot_configurator.plot_updater import PlotUpdater
 from ovsd.configs import OVSDConfig
 from ovsd.structures import init_structures
@@ -48,8 +48,12 @@ def main(args_=None):
     init_structures(config)
 
     plot_types = [MAP_NAME_TO_PLOT_TYPE[name] for name in args.plot_types] if args.plot_types else []
-    zds = args.zone if isinstance(args.zone[0], list) else [args.zone] if args.zone is not None else []
+    zds = args.zone if args.zone is not None else []
     zones = set([Zone.get_zone_from_real(*zd) for zd in zds])
+    zids = (args.indexed_zone if args.indexed_zone is not None else [])
+    zones |= set(Zone(*zid) for zid in zids)
+
+    zones = [zones.pop()] if zones else []
 
     len_plots = len(plot_types) + len(zones)
     if len_plots == 0:
@@ -83,7 +87,7 @@ def main(args_=None):
         plot_builder.add_plot_type(PlotType.ZONE_HMAP, sub_fig, zone)
 
     pipeline = PlotConfiguratorPipeline(
-        HMapCLimUpdater(rolling_average_factory),
+        hmap_clim_updater.HMapCLimSepRAUpdater(rolling_average_factory),
         PlotUpdater()
     )
 
@@ -111,7 +115,10 @@ def get_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("-i", "--invalid-frame-handler", choices=['ignore', 'interpolate', 'subtract'])
 
     # NOTE: arg "zone" can accept multiple zones by set action to append
-    parser.add_argument('-z', '--zone', type=float, nargs=4, metavar=("r1", "r2", "a1", "a2"))
+    parser.add_argument('-z', '--zone', type=float, nargs=4, metavar=("r1", "r2", "a1", "a2"), action="append")
+    parser.add_argument(
+        '-x', '--indexed_zone', type=int, nargs=4, metavar=("r_start", "r_len", "a_start", "a2_len"), action="append"
+    )
     parser.add_argument('-f', '--full', dest="plot_types", action="append_const", const="f")
     parser.add_argument('-p', '--polar-full', dest="plot_types", action="append_const", const="p")
     return parser

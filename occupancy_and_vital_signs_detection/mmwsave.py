@@ -13,7 +13,7 @@ from ovsd.display import AbstractPlotSaver, PlotSaver, PlotCombinedSaver
 from ovsd.mmw_info_iter import InvalidFrameHandler
 from ovsd.plot import Zone
 from ovsd.plot.plots_builder import PlotGroupBuilder, PlotType
-from ovsd.plot_configurator.hmap_clim_updater import HMapCLimUpdater
+from ovsd.plot_configurator import hmap_clim_updater
 from ovsd.plot_configurator.plot_updater import PlotUpdater
 from ovsd.configs import OVSDConfig
 from ovsd.structures import init_structures
@@ -58,7 +58,12 @@ def main(args_=None):
         exit()
 
     plot_types = [MAP_NAME_TO_PLOT_TYPE[name] for name in args.plot_types] if args.plot_types else []
-    zones = set([Zone.get_zone_from_real(*zd) for zd in args.zone] if args.zone else [])
+    zds = args.zone if args.zone is not None else []
+    zones = set([Zone.get_zone_from_real(*zd) for zd in zds])
+    zids = (args.indexed_zone if args.indexed_zone is not None else [])
+    zones |= set(Zone(*zid) for zid in zids)
+
+    zones = [zones.pop()] if zones else []
 
     if len(plot_types) + len(zones) == 0:
         raise RuntimeError("No Plot Types specified")
@@ -80,7 +85,7 @@ def main(args_=None):
     saver_params = dict(
         base_figs=figs,
         plot=plot_builder.build(),
-        frame_configurator=HMapCLimUpdater(rolling_average_factory),
+        frame_configurator=hmap_clim_updater.HMapCLimSepRAUpdater(rolling_average_factory),
         update_configurator=PlotUpdater(),
         skip=args.skip,
         max_saves=args.max_saves
@@ -130,6 +135,9 @@ def get_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("-o", "--out-dir", type=Path, required=True, help="path to the output directory")
     parser.add_argument("-i", "--invalid-frame-handler", choices=['ignore', 'interpolate', 'subtract'])
     parser.add_argument('-z', '--zone', type=float, nargs=4, action="append", metavar=("r1", "r2", "a1", "a2"))
+    parser.add_argument(
+        '-x', '--indexed_zone', type=int, nargs=4, metavar=("r_start", "r_len", "a_start", "a2_len"), action="append"
+    )
     parser.add_argument('-f', '--full', dest="plot_types", action="append_const", const="f")
     parser.add_argument('-p', '--polar-full', dest="plot_types", action="append_const", const="p")
     parser.add_argument("--skip", default=50, type=int, help="produces images after the number of frames")
