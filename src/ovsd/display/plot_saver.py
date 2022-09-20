@@ -104,7 +104,7 @@ class PlotSaver(AbstractPlotSaver):
                     )
                 else:
                     out_path = (self.out_dir / self.out_dir.stem)
-                    out_path = out_path.with_stem(f'{out_path.stem}_{name}_{fn}').with_suffix('.png')
+                    out_path = out_path.with_name(f'{out_path.stem}_{name}_{fn}.png')
                     cv2.imwrite(str(out_path), img)
             saves += 1
             if self.max_saves is not None and saves >= self.max_saves:
@@ -172,7 +172,7 @@ class PlotCombinedSaver(AbstractPlotSaver):
                 continue
             for name, imgs in name_imgs_map.items():
                 out_path = (self.out_dir / self.out_dir.stem)
-                out_path = out_path.with_stem(f'{out_path.stem}_{name}_combined_{i}').with_suffix('.png')
+                out_path = out_path.with_name(f'{out_path.stem}_{name}_combined_{i}.png')
                 cv2.imwrite(str(out_path), combine_images(self.out_shape, imgs, 3))
             saves += 1
             if self.max_saves is not None and saves >= self.max_saves:
