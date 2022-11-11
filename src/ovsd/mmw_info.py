@@ -42,6 +42,17 @@ class MMWInfo:
     def get_full_hmap(self) -> np.ndarray:
         return self.hmap
 
+    def get_hmap(self, zone: Optional[AbstractZone] = None) -> np.ndarray:
+        """
+        Get Heatmap from the info.
+        :param zone:
+        :return: ZoneHeatmap if zone has specified. FullHeatmap otherwise.
+        """
+        if zone is None:
+            return self.get_full_hmap()
+        else:
+            return self.get_zone_hmap(zone)
+
     def copy(self) -> "MMWInfo":
         return MMWInfo(
             header=self.header,

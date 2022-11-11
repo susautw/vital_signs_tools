@@ -14,7 +14,7 @@ from ovsd.display import PlotShower
 from ovsd.mmw_info_iter import InvalidFrameHandler
 from ovsd.plot import Zone
 from ovsd.plot.plots_builder import PlotGroupBuilder, PlotType
-from ovsd.plot_configurator import PlotConfiguratorPipeline
+from ovsd.plot_configurator import PlotConfiguratorPipeline, HMapNoiseRemover
 from ovsd.plot_configurator import hmap_clim_updater
 from ovsd.plot_configurator.plot_updater import PlotUpdater
 from ovsd.configs import OVSDConfig
@@ -87,6 +87,7 @@ def main(args_=None):
         plot_builder.add_plot_type(PlotType.ZONE_HMAP, sub_fig, zone)
 
     pipeline = PlotConfiguratorPipeline(
+        HMapNoiseRemover(),
         hmap_clim_updater.HMapCLimSepRAUpdater(rolling_average_factory),
         PlotUpdater()
     )

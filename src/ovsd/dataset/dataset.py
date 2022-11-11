@@ -44,8 +44,6 @@ class CachedDataset(IDataset, ABC):
         self._cached = True
 
     def get_source_iter(self, path: Path) -> Iterator[MMWInfo]:
-        if path.is_absolute():
-            path = path.relative_to(self.get_description().root.absolute())
         if self._cached:
             return self._get_cached_source_iter(self.make_cache(path))
         else:

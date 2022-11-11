@@ -13,7 +13,7 @@ from ovsd.display import AbstractPlotSaver, PlotSaver, PlotCombinedSaver
 from ovsd.mmw_info_iter import InvalidFrameHandler
 from ovsd.plot import Zone
 from ovsd.plot.plots_builder import PlotGroupBuilder, PlotType
-from ovsd.plot_configurator import hmap_clim_updater
+from ovsd.plot_configurator import hmap_clim_updater, PlotConfiguratorPipeline, HMapNoiseRemover
 from ovsd.plot_configurator.plot_updater import PlotUpdater
 from ovsd.configs import OVSDConfig
 from ovsd.structures import init_structures
@@ -85,7 +85,10 @@ def main(args_=None):
     saver_params = dict(
         base_figs=figs,
         plot=plot_builder.build(),
-        frame_configurator=hmap_clim_updater.HMapCLimSepRAUpdater(rolling_average_factory),
+        frame_configurator=PlotConfiguratorPipeline(
+            HMapNoiseRemover(),
+            hmap_clim_updater.HMapCLimSepRAUpdater(rolling_average_factory)
+        ),
         update_configurator=PlotUpdater(),
         skip=args.skip,
         max_saves=args.max_saves
